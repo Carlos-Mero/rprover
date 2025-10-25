@@ -249,6 +249,77 @@ class Verifier():
         rewards = [1.0 if extract_xml_content(r, "verification") == "true" else 0.0 for r in results]
         return rewards, results
 
+class PessimisticVerifier():
+    """
+    Runs multiple parallel reviews using the same checklist as Verifier,
+    then asks a judger to double-check negative findings and produce a final verdict.
+    """
+    def __init__(self, api_base, api_key, model, review_times: int = 3):
+        self.client = LLMClient(api_base, api_key, model)
+        self.review_times = max(1, review_times)
+
+    def _review_messages(self, problems, completions):
+        messages = []
+        for (p, c) in zip(problems, completions):
+            answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
+            base = [
+                {"role": "system", "content": (
+                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                )},
+                {"role": "user", "content": (
+                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
+                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
+                    "2. The solution actually derives the conclusion required by the original problem.\n"
+                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
+                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
+                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
+                    "Response requirements: If the solution is correct overall, reply ONLY with `<verification>true</verification>` and no other text."
+                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
+                    " Do not include any restatement of the solution or problem.\n\n"
+                    f"<problem>{p}</problem>\n\n"
+                    f"<answer>{answer}</answer>"
+                )}
+            ]
+            for _ in range(self.review_times):
+                messages.append(base)
+        return messages
+
+    def _build_judge_messages(self, problems, completions, grouped_reviews):
+        judge_messages = []
+        for (p, c), reviews in zip(zip(problems, completions), grouped_reviews):
+            answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
+            negatives = [strip_think_simple(r) for r in reviews if extract_xml_content(r, "verification") == "false"]
+            neg_block = "\n".join(f"- Review {i+1}: {r}" for i, r in enumerate(negatives)) if negatives else "(none)"
+            judge_messages.append([
+                {"role": "system", "content": (
+                    "You are a rigorous mathematics proof judger. You will receive a problem, a candidate solution, and several negative peer reviews that claim there are errors."
+                    " Sequentially double-check each alleged error: decide whether it actually harms the correctness of the proof. If any harmful error is confirmed, the proof is incorrect."
+                )},
+                {"role": "user", "content": (
+                    "Task: Examine the negative reviews and determine whether the candidate solution remains correct."
+                    " Provide a brief justification (2-3 sentences). If the solution is correct overall, append `<verification>true</verification>`; otherwise append `<verification>false</verification>`.\n\n"
+                    f"<problem>{p}</problem>\n\n"
+                    f"<answer>{answer}</answer>\n\n"
+                    f"<negative_reviews>\n{neg_block}\n</negative_reviews>"
+                )}
+            ])
+        return judge_messages
+
+    def __call__(self, problems, completions, **kwargs):
+        # Phase 1: parallel reviews
+        review_messages = self._review_messages(problems, completions)
+        all_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(review_messages, **kwargs))
+        # Group reviews per problem
+        k = self.review_times
+        grouped = [all_reviews[i * k:(i + 1) * k] for i in range(len(problems))]
+
+        # Phase 2: judgement
+        judge_messages = self._build_judge_messages(problems, completions, grouped)
+        judge_results = ASYNC_LOOP.run(self.client.infer_batch_async(judge_messages, **kwargs))
+
+        rewards = [1.0 if extract_xml_content(r, "verification") == "true" else 0.0 for r in judge_results]
+        return rewards, judge_results
+
 class NaiveProver():
     """
     NaiveProver directly proves the given problem
@@ -362,10 +433,15 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for pessimistic reviewer")
+    parser.add_argument("--evaluate_reviewer", action='store_true', default=False, help="enable evaluation of the reviewer against guider model as ground truth")
     parser.add_argument("--prover_base_url", default="", help="the base url for prover")
     parser.add_argument("--eval_base_url", default="", help="the base url for evaluator")
+    parser.add_argument("--guider_base_url", default="", help="the base url for guider model (falls back to eval -> prover)")
     parser.add_argument("--prover_api_key", default="", help="the api key for the prover")
     parser.add_argument("--eval_api_key", default="", help="the api key for the evaluator")
+    parser.add_argument("--guider_api_key", default="", help="the api key for the guider model (falls back to eval -> prover)")
     parser.add_argument("--agenttrain", action='store_true', default=False, help="enable agentic training while running this program")
 
     logger = logging.getLogger("main")
@@ -376,37 +452,47 @@ def main():
     ds = prepare_dataset(args.eval_dataset)
     problems = [e['problem'] for e in ds]
 
+    # Resolve API bases and keys with fallback: prover -> eval -> guider
+    prover_base_url = args.prover_base_url
+    prover_api_key = args.prover_api_key
+
+    eval_base_url = args.eval_base_url or prover_base_url
+    eval_api_key = args.eval_api_key or prover_api_key
+
+    guider_base_url = args.guider_base_url or eval_base_url
+    guider_api_key = args.guider_api_key or eval_api_key
+
     if args.method == "naive":
         prover = NaiveProver(
-            api_base=args.prover_base_url,
-            api_key=args.prover_api_key,
+            api_base=prover_base_url,
+            api_key=prover_api_key,
             model=args.proof_model,
         )
     elif args.method == "gprover":
         prover = GProver(
-            api_base=args.prover_base_url,
-            api_key=args.prover_api_key,
+            api_base=prover_base_url,
+            api_key=prover_api_key,
             model=args.proof_model,
-            gapi_base=args.eval_base_url,
-            gapi_key=args.eval_api_key,
+            gapi_base=guider_base_url,
+            gapi_key=guider_api_key,
             gmodel=args.guider_model
         )
     elif args.method == "hprover":
         prover = HProver(
-            api_base=args.prover_base_url,
-            api_key=args.prover_api_key,
+            api_base=prover_base_url,
+            api_key=prover_api_key,
             model=args.proof_model,
-            gapi_base=args.eval_base_url,
-            gapi_key=args.eval_api_key,
+            gapi_base=guider_base_url,
+            gapi_key=guider_api_key,
             gmodel=args.guider_model
         )
     elif args.method == "aceprover":
         prover = ACEProver(
-            api_base=args.prover_base_url,
-            api_key=args.prover_api_key,
+            api_base=prover_base_url,
+            api_key=prover_api_key,
             model=args.proof_model,
-            gapi_base=args.eval_base_url,
-            gapi_key=args.eval_api_key,
+            gapi_base=guider_base_url,
+            gapi_key=guider_api_key,
             gmodel=args.guider_model
         )
     elif args.method == "aceprover":
@@ -421,11 +507,70 @@ def main():
     striped_proofs = [strip_think_simple(proof) for proof in proofs]
     logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
 
-    if args.method == "gprover" or args.method == "hprover" or args.method == "aceprover":
-        evaluator = Verifier(args.eval_base_url, args.eval_api_key, args.eval_model)
+    if args.method == "naive" or args.method == "gprover" or args.method == "hprover" or args.method == "aceprover":
+        if args.reviewer == "pessimistic":
+            evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+        else:
+            evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
         evals, verifications = evaluator(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
         accuracy = sum(evals) / len(evals)
         logger.info(f"Obtained final accuracy: {accuracy}")
+
+        # Optional: evaluate the reviewer against the guider model as ground truth
+        if args.evaluate_reviewer:
+            logger.info("Evaluating reviewer against guider model as ground truth")
+            gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
+            gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+
+            preds = [int(x) for x in evals]
+            gts = [int(x) for x in gt_labels]
+            total = len(preds)
+            correct = sum(1 for p, g in zip(preds, gts) if p == g)
+            tp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 1)
+            tn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 0)
+            fp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 0)
+            fn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 1)
+            verifier_accuracy = correct / total if total else 0.0
+            precision = tp / (tp + fp) if (tp + fp) else None
+            recall = tp / (tp + fn) if (tp + fn) else None
+            f1 = (2 * precision * recall / (precision + recall)) if (precision and recall and (precision + recall)) else None
+
+            verifier_eval = {
+                "total": total,
+                "accuracy": verifier_accuracy,
+                "tp": tp,
+                "tn": tn,
+                "fp": fp,
+                "fn": fn,
+                "precision": precision,
+                "recall": recall,
+                "f1": f1,
+            }
+
+            # Save sample-level comparison
+            verifier_samples = [
+                {
+                    "problem": problem,
+                    "proof": proof,
+                    "pred_label": bool(pred),
+                    "pred_text": pred_text,
+                    "gt_label": bool(gt),
+                    "gt_text": gt_text,
+                }
+                for (problem, proof, pred, pred_text, gt, gt_text) in zip(
+                    problems, proofs, preds, verifications, gts, gt_texts
+                )
+            ]
+
+            with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
+                json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
+            with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
+                json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
+
+            # Add summary to logs.json payload
+            vars_dict_key = "verifier_evaluation"
+            # vars_dict defined below; collect into a temporary dict for later merge
+            extra_verifier_eval = {vars_dict_key: verifier_eval}
     else:
         raise NotImplementedError("unknown method")
 
@@ -448,6 +593,13 @@ def main():
 
     if hasattr(prover, 'exps'):
         vars_dict["exps"] = prover.exps
+
+    # Merge verifier evaluation summary if available
+    try:
+        if 'extra_verifier_eval' in locals():
+            vars_dict.update(extra_verifier_eval)
+    except Exception:
+        pass
 
     with open(logdir / "logs.json", "w", encoding="utf-8") as f:
         json.dump(vars_dict, f, ensure_ascii=False, indent=2, default=str)
