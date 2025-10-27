@@ -443,14 +443,37 @@ def main():
     parser.add_argument("--eval_api_key", default="", help="the api key for the evaluator")
     parser.add_argument("--guider_api_key", default="", help="the api key for the guider model (falls back to eval -> prover)")
     parser.add_argument("--agenttrain", action='store_true', default=False, help="enable agentic training while running this program")
+    parser.add_argument(
+        "--verifier_samples",
+        default="",
+        help=(
+            "path to a previously generated verifier_samples.json. "
+            "When set, uses the same problems, proofs, and golden labels from the file, "
+            "skipping new proof generation and ground-truth verification."
+        ),
+    )
 
     logger = logging.getLogger("main")
     args = parser.parse_args()
     logger.info("start verifying with proof_model: %s", args.proof_model)
     logger.info("using eval model: %s", args.eval_model)
 
-    ds = prepare_dataset(args.eval_dataset)
-    problems = [e['problem'] for e in ds]
+    # If verifier_samples is provided, use it to load problems/proofs and GT labels
+    loaded_verifier_samples = None
+    if args.verifier_samples:
+        vs_path = Path(args.verifier_samples)
+        with vs_path.open("r", encoding="utf-8") as f:
+            loaded_verifier_samples = json.load(f)
+        if not isinstance(loaded_verifier_samples, list):
+            raise ValueError("verifier_samples must be a list of sample dicts")
+        problems = [s.get("problem", "") for s in loaded_verifier_samples]
+        proofs = [s.get("proof", "") for s in loaded_verifier_samples]
+        preloaded_gt_labels = [bool(s.get("gt_label", False)) for s in loaded_verifier_samples]
+        preloaded_gt_texts = [s.get("gt_text", "") for s in loaded_verifier_samples]
+        logger.info("Loaded %d samples from verifier_samples: %s", len(problems), vs_path)
+    else:
+        ds = prepare_dataset(args.eval_dataset)
+        problems = [e['problem'] for e in ds]
 
     # Resolve API bases and keys with fallback: prover -> eval -> guider
     prover_base_url = args.prover_base_url
@@ -503,9 +526,14 @@ def main():
     logdir = get_current_log_path(args.log_dir)
     logdir.mkdir(parents=True, exist_ok=True)
 
-    proofs = prover(problems, reasoning_effort=args.reasoning_effort)
-    striped_proofs = [strip_think_simple(proof) for proof in proofs]
-    logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
+    # Collect proofs unless verifier_samples is provided
+    if args.verifier_samples:
+        striped_proofs = [strip_think_simple(proof) for proof in proofs]
+        logger.info("Using preloaded proofs from verifier_samples, skipping prover generation")
+    else:
+        proofs = prover(problems, reasoning_effort=args.reasoning_effort)
+        striped_proofs = [strip_think_simple(proof) for proof in proofs]
+        logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
 
     if args.method == "naive" or args.method == "gprover" or args.method == "hprover" or args.method == "aceprover":
         if args.reviewer == "pessimistic":
@@ -519,8 +547,14 @@ def main():
         # Optional: evaluate the reviewer against the guider model as ground truth
         if args.evaluate_reviewer:
             logger.info("Evaluating reviewer against guider model as ground truth")
-            gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
-            gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+            if args.verifier_samples:
+                # Use ground-truth labels/texts from the provided verifier_samples file
+                gt_labels = preloaded_gt_labels
+                gt_texts = preloaded_gt_texts
+                logger.info("Using GT labels from verifier_samples; skipping new GT verification")
+            else:
+                gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
+                gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
 
             preds = [int(x) for x in evals]
             gts = [int(x) for x in gt_labels]
@@ -578,8 +612,13 @@ def main():
     logger.info("evaluation ended")
     vars_dict = vars(args)
     vars_dict["accuracy"] = accuracy
-    average_prover_inp_tokens = sum(prover.client.input_tokens) / len(prover.client.input_tokens)
-    average_prover_opt_tokens = sum(prover.client.comp_tokens) / len(prover.client.comp_tokens)
+    # Token stats: skip prover token stats when using preloaded samples
+    if args.verifier_samples:
+        average_prover_inp_tokens = None
+        average_prover_opt_tokens = None
+    else:
+        average_prover_inp_tokens = sum(prover.client.input_tokens) / len(prover.client.input_tokens)
+        average_prover_opt_tokens = sum(prover.client.comp_tokens) / len(prover.client.comp_tokens)
     average_eval_inp_tokens = sum(evaluator.client.input_tokens) / len(evaluator.client.input_tokens)
     average_eval_opt_tokens = sum(evaluator.client.comp_tokens) / len(evaluator.client.comp_tokens)
     logger.info(f"Average token inputs in prover: {average_prover_inp_tokens}")
@@ -604,6 +643,14 @@ def main():
     with open(logdir / "logs.json", "w", encoding="utf-8") as f:
         json.dump(vars_dict, f, ensure_ascii=False, indent=2, default=str)
 
+    # Prepare sample payload; use placeholder tokens if verifier_samples is provided
+    if args.verifier_samples:
+        prover_inp_tokens = [None] * len(problems)
+        prover_comp_tokens = [None] * len(problems)
+    else:
+        prover_inp_tokens = prover.client.input_tokens
+        prover_comp_tokens = prover.client.comp_tokens
+
     samples = [
         {
             "problem": problem,
@@ -613,7 +660,9 @@ def main():
             "input_tokens": inp_tokens,
             "completion_tokens": comp_tokens
         }
-        for (problem, proof, eval, verification, inp_tokens, comp_tokens) in zip(problems, proofs, evals, verifications, prover.client.input_tokens, prover.client.comp_tokens)
+        for (problem, proof, eval, verification, inp_tokens, comp_tokens) in zip(
+            problems, proofs, evals, verifications, prover_inp_tokens, prover_comp_tokens
+        )
     ]
     # if exps is not None:
     #     for s, exp in zip(samples, exps):
