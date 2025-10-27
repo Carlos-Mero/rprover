@@ -235,8 +235,11 @@ class Verifier():
                     "3. Every step of calculation and formula derivation in the solution is correct.\n"
                     "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
                     "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n"
+                    "\nConsistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n"
                     "\n"
-                    "If all of the above are correct, append `<verification>true</verification>` at the end of your reply; otherwise, append `<verification>false</verification>`.\n"
+                    "If correct overall (possibly with minor issues), append `<verification>true</verification>` at the end of your reply and include a brief note of minor issues if any; otherwise append `<verification>false</verification>`.\n"
                     "\n"
                     f"<problem>{p}</problem>\n"
                     "\n"
@@ -249,7 +252,7 @@ class Verifier():
         rewards = [1.0 if extract_xml_content(r, "verification") == "true" else 0.0 for r in results]
         return rewards, results
 
-class PessimisticVerifier():
+class PessimisticJudger():
     """
     Runs multiple parallel reviews using the same checklist as Verifier,
     then asks a judger to double-check negative findings and produce a final verdict.
@@ -273,9 +276,12 @@ class PessimisticVerifier():
                     "3. Every step of calculation and formula derivation in the solution is correct.\n"
                     "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
                     "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
-                    "Response requirements: If the solution is correct overall, reply ONLY with `<verification>true</verification>` and no other text."
+                    "Consistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
+                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
                     " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
-                    " Do not include any restatement of the solution or problem.\n\n"
+                    " Do not include any restatement of the entire solution or problem.\n\n"
                     f"<problem>{p}</problem>\n\n"
                     f"<answer>{answer}</answer>"
                 )}
@@ -297,7 +303,8 @@ class PessimisticVerifier():
                 )},
                 {"role": "user", "content": (
                     "Task: Examine the negative reviews and determine whether the candidate solution remains correct."
-                    " Provide a brief justification (2-3 sentences). If the solution is correct overall, append `<verification>true</verification>`; otherwise append `<verification>false</verification>`.\n\n"
+                    " Apply the following policy: minor, easily fixable issues do NOT invalidate correctness; critical errors that undermine the argument DO."
+                    " Provide a brief justification (2-3 sentences). If the solution is correct overall (possibly with minor issues), append `<verification>true</verification>` and briefly note minor issues if any; otherwise append `<verification>false</verification>`.\n\n"
                     f"<problem>{p}</problem>\n\n"
                     f"<answer>{answer}</answer>\n\n"
                     f"<negative_reviews>\n{neg_block}\n</negative_reviews>"
@@ -319,6 +326,71 @@ class PessimisticVerifier():
 
         rewards = [1.0 if extract_xml_content(r, "verification") == "true" else 0.0 for r in judge_results]
         return rewards, judge_results
+
+class PessimisticVerifier():
+    """
+    Runs multiple parallel reviews using the same checklist as Verifier.
+    Instead of asking a judger, it treats the FIRST review that reports an error
+    (`<verification>false</verification>`) as the final verdict for that proof.
+    """
+    def __init__(self, api_base, api_key, model, review_times: int = 3):
+        self.client = LLMClient(api_base, api_key, model)
+        self.review_times = max(1, review_times)
+
+    def _review_messages(self, problems, completions):
+        messages = []
+        for (p, c) in zip(problems, completions):
+            answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
+            base = [
+                {"role": "system", "content": (
+                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                )},
+                {"role": "user", "content": (
+                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
+                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
+                    "2. The solution actually derives the conclusion required by the original problem.\n"
+                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
+                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
+                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
+                    "Consistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
+                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
+                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
+                    " Do not include any restatement of the entire solution or problem.\n\n"
+                    f"<problem>{p}</problem>\n\n"
+                    f"<answer>{answer}</answer>"
+                )}
+            ]
+            for _ in range(self.review_times):
+                messages.append(base)
+        return messages
+
+    def __call__(self, problems, completions, **kwargs):
+        # Only perform parallel reviews and take the first error as verdict
+        review_messages = self._review_messages(problems, completions)
+        all_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(review_messages, **kwargs))
+        k = self.review_times
+        grouped = [all_reviews[i * k:(i + 1) * k] for i in range(len(problems))]
+
+        final_reviews = []
+        rewards = []
+        for reviews in grouped:
+            # find first negative review
+            first_negative = None
+            for r in reviews:
+                if extract_xml_content(r, "verification") == "false":
+                    first_negative = r
+                    break
+            if first_negative is not None:
+                rewards.append(0.0)
+                final_reviews.append(first_negative)
+            else:
+                rewards.append(1.0)
+                # fallback: take the first positive review's content
+                final_reviews.append(reviews[0] if reviews else "")
+
+        return rewards, final_reviews
 
 class NaiveProver():
     """
@@ -433,7 +505,7 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
-    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger"], help="the reviewer used for evaluation")
     parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for pessimistic reviewer")
     parser.add_argument("--evaluate_reviewer", action='store_true', default=False, help="enable evaluation of the reviewer against guider model as ground truth")
     parser.add_argument("--prover_base_url", default="", help="the base url for prover")
@@ -537,7 +609,11 @@ def main():
 
     if args.method == "naive" or args.method == "gprover" or args.method == "hprover" or args.method == "aceprover":
         if args.reviewer == "pessimistic":
+            # Use the new PessimisticVerifier (first error wins)
             evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+        elif args.reviewer == "pessimistic_judger":
+            # Two-phase: parallel reviews then final judger decision
+            evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
         else:
             evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
         evals, verifications = evaluator(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
