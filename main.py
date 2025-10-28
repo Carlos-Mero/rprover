@@ -56,6 +56,36 @@ def get_current_log_path(log_dir: str):
     logdir = Path(log_dir) / ts
     return logdir
 
+def _load_jsonl_problems(jsonl_path: Path, content_keys: tuple[str, ...] = ("markdown_statement",)) -> list[str]:
+    """Load problems from a JSONL file.
+
+    Each line must be a JSON object. The text of the problem is extracted
+    from the first available key in `content_keys`.
+    """
+    logger = logging.getLogger("dataset")
+    problems: list[str] = []
+    with jsonl_path.open("r", encoding="utf-8") as f:
+        for i, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping malformed JSON at %s line %d", jsonl_path, i)
+                continue
+            content = None
+            for key in content_keys:
+                if key in obj and isinstance(obj[key], str):
+                    content = obj[key]
+                    break
+            if content is None:
+                logger.warning("No problem content key %s found at %s line %d", content_keys, jsonl_path, i)
+                continue
+            problems.append(content)
+    logger.info("Loaded %d problems from %s", len(problems), jsonl_path)
+    return problems
+
 def prepare_dataset(dataset_path):
     """
     this function prepares datasets according to the given path
@@ -65,6 +95,12 @@ def prepare_dataset(dataset_path):
     if dataset_path == "NP_dataset/train_full.json" or dataset_path == "NP_dataset/train_3000.json" or dataset_path == "NP_dataset/test_hard.json" or dataset_path == "NP_dataset/test_random.json" or dataset_path == "NP_dataset/train_300.json":
         with Path(dataset_path).open("r", encoding="utf-8") as f:
             problems = json.load(f)
+        ds = Dataset.from_dict({"problem": problems})
+    elif dataset_path in {
+        "NP_dataset/qz_bench_train.jsonl",
+        "NP_dataset/qz_bench_eval.jsonl",
+    }:
+        problems = _load_jsonl_problems(Path(dataset_path), content_keys=("markdown_statement",))
         ds = Dataset.from_dict({"problem": problems})
     elif dataset_path == "HuggingFaceH4/MATH-500":
         ds = load_dataset(dataset_path)
