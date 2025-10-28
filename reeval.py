@@ -1,4 +1,5 @@
 import argparse
+import csv
 import json
 import logging
 from pathlib import Path
@@ -53,7 +54,11 @@ async def _compare_one(sample: Dict[str, Any], sem: asyncio.Semaphore) -> Dict[s
         "- different_criterion: they used different acceptance criteria, rigor threshold or standards.\n"
         "- misinterpretation: one reviewer misunderstood the problem or the solution's intent.\n"
         "- other: none of the above.\n"
-        "Respond with a short <explanation>...</explanation> and a single <class>...</class> tag using one of the labels above.\n\n"
+        "Additionally, ATTRIBUTE the cause to a specific reviewer:\n"
+        "- Use <actor>A</actor> if Review A (pred_label/pred_text) is primarily responsible; <actor>B</actor> if Review B (gt_label/gt_text) is responsible.\n"
+        "- Provide a concise behavioral tag in <behavior>...</behavior> choosing ONE from: A_more_strict, B_more_strict, A_more_lenient, B_more_lenient, A_missed_error, B_missed_error, A_misinterpreted, B_misinterpreted, none.\n"
+        "The <behavior> MUST be consistent with <class> and the explanation.\n"
+        "Respond ONLY with: <explanation>...</explanation><class>...</class><actor>...</actor><behavior>...</behavior>.\n\n"
         f"<problem>{problem}</problem>\n"
         f"<solution>{proof}</solution>\n\n"
         f"<review_a label=\"{pred_label}\">{pred_text}</review_a>\n"
@@ -80,6 +85,8 @@ async def _compare_one(sample: Dict[str, Any], sem: asyncio.Semaphore) -> Dict[s
 
     explanation = extract_xml_content(content, "explanation") or ""
     classification = (extract_xml_content(content, "class") or "").strip()
+    actor = (extract_xml_content(content, "actor") or "").strip()
+    behavior = (extract_xml_content(content, "behavior") or "").strip()
 
     return {
         "problem": problem,
@@ -91,6 +98,8 @@ async def _compare_one(sample: Dict[str, Any], sem: asyncio.Semaphore) -> Dict[s
         "analysis": content,
         "explanation": explanation,
         "classification": classification,
+        "actor": actor,
+        "behavior": behavior,
     }
 
 
@@ -112,16 +121,70 @@ def save_outputs(logdir: Path, disagreements: List[Dict[str, Any]]):
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(disagreements, f, ensure_ascii=False, indent=2)
 
+def export_disagreements_csv(logdir: Path, disagreements: List[Dict[str, Any]]) -> Path:
+    """Export disagreements to CSV for easy review."""
+    csv_path = logdir / "verifier_disagreements.csv"
+    fields = [
+        "index",
+        "classification",
+        "actor",
+        "behavior",
+        "pred_label",
+        "gt_label",
+        "problem",
+        "explanation",
+        "pred_text",
+        "gt_text",
+    ]
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        for i, s in enumerate(disagreements, start=1):
+            row = {
+                "index": i,
+                "classification": (s.get("classification") or "").strip(),
+                "actor": (s.get("actor") or "").strip(),
+                "behavior": (s.get("behavior") or "").strip(),
+                "pred_label": int(bool(s.get("pred_label", False))),
+                "gt_label": int(bool(s.get("gt_label", False))),
+                "problem": s.get("problem", ""),
+                "explanation": s.get("explanation", ""),
+                "pred_text": s.get("pred_text", ""),
+                "gt_text": s.get("gt_text", ""),
+            }
+            writer.writerow(row)
+    return csv_path
+
 
 def log_classification_counts(disagreements: List[Dict[str, Any]], logger: logging.Logger):
-    counts: Dict[str, int] = {}
+    by_class: Dict[str, int] = {}
+    by_actor: Dict[str, int] = {}
+    by_class_actor: Dict[str, int] = {}
+    by_behavior: Dict[str, int] = {}
     for s in disagreements:
         cls = (s.get("classification") or "").strip() or "unknown"
-        counts[cls] = counts.get(cls, 0) + 1
+        act = (s.get("actor") or "").strip() or "unknown"
+        beh = (s.get("behavior") or "").strip() or "none"
+        by_class[cls] = by_class.get(cls, 0) + 1
+        by_actor[act] = by_actor.get(act, 0) + 1
+        key = f"{cls}:{act}"
+        by_class_actor[key] = by_class_actor.get(key, 0) + 1
+        by_behavior[beh] = by_behavior.get(beh, 0) + 1
+
     total = len(disagreements)
-    logger.info("Disagreement classification counts (total=%d):", total)
-    for k, v in sorted(counts.items(), key=lambda x: (-x[1], x[0])):
-        logger.info("  %s: %d", k, v)
+    logger.info("Disagreement counts (total=%d)", total)
+    logger.info("  By class:")
+    for k, v in sorted(by_class.items(), key=lambda x: (-x[1], x[0])):
+        logger.info("    %s: %d", k, v)
+    logger.info("  By actor:")
+    for k, v in sorted(by_actor.items(), key=lambda x: (-x[1], x[0])):
+        logger.info("    %s: %d", k, v)
+    logger.info("  By class+actor:")
+    for k, v in sorted(by_class_actor.items(), key=lambda x: (-x[1], x[0])):
+        logger.info("    %s: %d", k, v)
+    logger.info("  By behavior:")
+    for k, v in sorted(by_behavior.items(), key=lambda x: (-x[1], x[0])):
+        logger.info("    %s: %d", k, v)
 
 
 def load_existing_disagreements(logdir: Path) -> List[Dict[str, Any]] | None:
@@ -161,12 +224,16 @@ def main():
     if existing is not None:
         logger.info("Existing disagreement analysis found; reloading and printing statistics.")
         log_classification_counts(existing, logger)
+        csv_path = export_disagreements_csv(logdir, existing)
+        logger.info("Exported disagreement CSV to %s", csv_path)
         return
 
     logger.info("Running gpt-5-mini analyses in parallel (concurrency=%d)", args.concurrency)
     analyzed = asyncio.run(analyze_disagreements_async(disagreements, concurrency=args.concurrency))
     save_outputs(logdir, analyzed)
     log_classification_counts(analyzed, logger)
+    csv_path = export_disagreements_csv(logdir, analyzed)
+    logger.info("Exported disagreement CSV to %s", csv_path)
     logger.info("Saved disagreement analyses to %s", logdir / "verifier_disagreements.json")
 
 
