@@ -56,7 +56,7 @@ async def _compare_one(sample: Dict[str, Any], sem: asyncio.Semaphore) -> Dict[s
         "- other: none of the above.\n"
         "Additionally, ATTRIBUTE the cause to a specific reviewer:\n"
         "- Use <actor>A</actor> if Review A (pred_label/pred_text) is primarily responsible; <actor>B</actor> if Review B (gt_label/gt_text) is responsible.\n"
-        "- Provide a concise behavioral tag in <behavior>...</behavior> choosing ONE from: A_more_strict, B_more_strict, A_more_lenient, B_more_lenient, A_missed_error, B_missed_error, A_misinterpreted, B_misinterpreted, none.\n"
+        "- Provide a concise behavioral tag in <behavior>...</behavior> choosing ONE from: A_more_strict, B_more_strict, A_missed_error, B_missed_error, A_misinterpreted, B_misinterpreted, none.\n"
         "The <behavior> MUST be consistent with <class> and the explanation.\n"
         "Respond ONLY with: <explanation>...</explanation><class>...</class><actor>...</actor><behavior>...</behavior>.\n\n"
         f"<problem>{problem}</problem>\n"
