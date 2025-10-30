@@ -6,11 +6,10 @@ from pathlib import Path
 from utils.async_runner import AsyncLoopThread
 from datasets import load_dataset, Dataset, concatenate_datasets
 from litellm import acompletion
-import httpx
 import logging
 from datetime import datetime, timezone
 import random
-import requests
+from tqdm import tqdm
 
 ASYNC_LOOP = AsyncLoopThread()
 
@@ -168,24 +167,41 @@ class LLMClient():
     async def infer_batch_async(self,
                                 all_messages,
                                 concurrency: int = 8,
+                                show_progress: bool = True,
                                 **kwargs) -> list[str]:
         logger = logging.getLogger("evaluator")
         logger.info("running batch inference on %d samples", len(all_messages))
         sem = asyncio.Semaphore(concurrency)
         ALLOWED_PARAM_KEYS = {"reasoning_effort", "thinking", "enable_thinking"}
         infer_params = {k: v for k, v in kwargs.items() if k in ALLOWED_PARAM_KEYS}
-        tasks = [
-            asyncio.create_task(self._infer_one(messages, sem, **infer_params))
-            for messages in all_messages
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        for i, r in enumerate(results):
+        async def _run_one(index: int, messages):
+            try:
+                r = await self._infer_one(messages, sem, **infer_params)
+            except Exception as e:
+                r = e
+            return index, r
+
+        tasks = [asyncio.create_task(_run_one(i, messages)) for i, messages in enumerate(all_messages)]
+        raw_results = [None] * len(all_messages)
+
+        pbar = tqdm(total=len(all_messages), desc="LLM batch", leave=False) if show_progress else None
+        try:
+            for t in asyncio.as_completed(tasks):
+                idx, r = await t
+                raw_results[idx] = r
+                if pbar:
+                    pbar.update(1)
+        finally:
+            if pbar:
+                pbar.close()
+
+        for i, r in enumerate(raw_results):
             if isinstance(r, Exception):
                 raise RuntimeError(f"Task {i} failed") from r
         logger.info("completed batch inference on %d samples",  len(all_messages))
-        completions = [r.choices[0].message["content"] if r is not None else "" for r  in results]
-        self.input_tokens = [r.usage.prompt_tokens for r in results if r is not None]
-        self.comp_tokens = [r.usage.completion_tokens for r in results if r is not None]
+        completions = [r.choices[0].message["content"] if r is not None else "" for r  in raw_results]
+        self.input_tokens = [r.usage.prompt_tokens for r in raw_results if r is not None]
+        self.comp_tokens = [r.usage.completion_tokens for r in raw_results if r is not None]
         return completions
 
 class Verifier():
@@ -363,6 +379,109 @@ class PessimisticVerifier():
 
         return rewards, final_reviews
 
+class VPessimisticVerifier():
+    """
+    Chunked pessimistic verifier.
+
+    Instead of reviewing the whole proof at once, it splits the proof into
+    chunks of `chunk_length` lines. For each chunk, it asks the reviewer to
+    focus only on that chunk while still providing the full problem and full
+    proof for context. If any chunk is flagged incorrect (`<verification>false</verification>`),
+    the final verdict is false. It also aggregates all error reports found.
+    """
+    def __init__(self, api_base, api_key, model, chunk_length: int = 7):
+        self.client = LLMClient(api_base, api_key, model)
+        self.chunk_length = max(1, int(chunk_length))
+
+    def _split_into_chunks(self, proof: str) -> list[str]:
+        lines = (proof or "").splitlines()
+        chunks = []
+        for i in range(0, len(lines), self.chunk_length):
+            chunk_lines = lines[i:i + self.chunk_length]
+            chunks.append("\n".join(chunk_lines))
+        if not chunks:
+            chunks = [proof or ""]
+        return chunks
+
+    def _build_messages_for_one(self, problem: str, full_proof: str) -> list[list[dict]]:
+        """Build messages for all chunks of a single (problem, proof)."""
+        chunks = self._split_into_chunks(full_proof)
+        messages_per_chunk = []
+        for idx, chunk in enumerate(chunks, start=1):
+            messages_per_chunk.append([
+                {"role": "system", "content": (
+                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                )},
+                {"role": "user", "content": (
+                    "We provide the original problem and the complete proposed solution for full context. "
+                    "Then we provide a specific chunk from the solution for focused checking. "
+                    "Your task: Check ONLY the given chunk for errors while considering the overall context.\n\n"
+                    "Checklist:\n"
+                    "1. The chunk’s reasoning and calculations adhere to mathematical correctness.\n"
+                    "2. Any theorems used in the chunk match their hypotheses and conclusions.\n"
+                    "3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.\n\n"
+                    "Consistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.\n\n"
+                    "Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. "
+                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the chunk.\n\n"
+                    f"<problem>{problem}</problem>\n\n"
+                    f"<full_answer>{strip_think_simple(full_proof)}</full_answer>\n\n"
+                    f"<chunk_index>{idx}</chunk_index>\n"
+                    f"<chunk>{chunk}</chunk>"
+                )}
+            ])
+        return messages_per_chunk
+
+    def __call__(self, problems, completions, **kwargs):
+        """
+        For each proof, review all chunks. Any chunk error makes the final verdict false.
+        Returns evals (1.0 or 0.0 per proof) and aggregated review texts per proof.
+        """
+        # Build all chunk messages across the batch
+        batch_messages = []
+        per_item_chunk_counts = []
+        for p, c in zip(problems, completions):
+            full_answer = c if isinstance(c, str) else c[0]['content']
+            full_answer = strip_think_simple(full_answer)
+            msgs = self._build_messages_for_one(p, full_answer)
+            per_item_chunk_counts.append(len(msgs))
+            batch_messages.extend(msgs)
+
+        # Run inference over all chunks
+        all_chunk_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(batch_messages, **kwargs))
+
+        # Group reviews by original sample
+        grouped_reviews = []
+        cursor = 0
+        for count in per_item_chunk_counts:
+            grouped_reviews.append(all_chunk_reviews[cursor:cursor + count])
+            cursor += count
+
+        # Aggregate verdicts and collect all errors
+        evals = []
+        final_texts = []
+        for reviews in grouped_reviews:
+            has_error = False
+            errors_text = []
+            fallback_text = reviews[0] if reviews else ""
+            for r in reviews:
+                verdict = extract_xml_content(r, "verification")
+                if verdict == "false":
+                    has_error = True
+                    errors_text.append(strip_think_simple(r))
+            if has_error:
+                evals.append(0.0)
+                # Aggregate all error reports into one text block
+                combined = "\n\n".join(errors_text) if errors_text else fallback_text
+                final_texts.append(combined)
+            else:
+                evals.append(1.0)
+                # If no errors, return first chunk review for reference
+                final_texts.append(fallback_text)
+
+        return evals, final_texts
+
 class NaiveProver():
     """
     NaiveProver directly proves the given problem
@@ -476,8 +595,9 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
-    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic"], help="the reviewer used for evaluation")
     parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for pessimistic reviewer")
+    parser.add_argument("--chunk_length", type=int, default=7, help="lines per chunk for vpessimistic reviewer")
     parser.add_argument("--evaluate_reviewer", action='store_true', default=False, help="enable evaluation of the reviewer against guider model as ground truth")
     parser.add_argument("--prover_base_url", default="", help="the base url for prover")
     parser.add_argument("--eval_base_url", default="", help="the base url for evaluator")
@@ -582,6 +702,9 @@ def main():
         if args.reviewer == "pessimistic":
             # Use the new PessimisticVerifier (first error wins)
             evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+        elif args.reviewer == "vpessimistic":
+            # Chunked pessimistic verifier (focus per-chunk)
+            evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
         elif args.reviewer == "pessimistic_judger":
             # Two-phase: parallel reviews then final judger decision
             evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
