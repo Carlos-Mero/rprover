@@ -392,6 +392,15 @@ class VPessimisticVerifier():
     def __init__(self, api_base, api_key, model, chunk_length: int = 7):
         self.client = LLMClient(api_base, api_key, model)
         self.chunk_length = max(1, int(chunk_length))
+        
+        # Constant fallback text when no critical errors are found across all chunks
+        self.NO_ERROR_FALLBACK: str = (
+            "<verification>true</verification>\n"
+            "No critical error found in this proof after chunked review. "
+            "All inspected chunks were considered correct overall given the problem and prior steps. "
+            "Minor, non-decisive issues (e.g., superficial notation or small slips later corrected) "
+            "may exist but do not undermine correctness."
+        )
 
     def _split_into_chunks(self, proof: str) -> list[str]:
         lines = (proof or "").splitlines()
@@ -477,8 +486,8 @@ class VPessimisticVerifier():
                 final_texts.append(combined)
             else:
                 evals.append(1.0)
-                # If no errors, return first chunk review for reference
-                final_texts.append(fallback_text)
+                # If no errors, return a constant message instead of first review
+                final_texts.append(self.NO_ERROR_FALLBACK)
 
         return evals, final_texts
 
