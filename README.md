@@ -4,7 +4,7 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 
 **Key Features**
 - Provers: `naive`, `gprover`, `hprover`, `aceprover`
-- Verifiers: `standard`, `pessimistic`, `vpessimistic`, `pessimistic_judger`
+- Verifiers: `standard`, `pessimistic`, `vpessimistic`, `pessimistic_judger`, `majority`
 - Reviewer evaluation against a guider model (`--evaluate_reviewer`)
 - Local datasets under `NP_dataset/` and HF datasets
 - Async batch inference with token stats and reproducible logs
@@ -41,8 +41,8 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 - `--proof_model` (`-pm`): prover model name
 - `--eval_model` (`-em`): reviewer/verifier model name
 - `--guider_model` (`-gm`): guidance/ground‑truth model name
-- `--reviewer`: `standard | pessimistic | vpessimistic | pessimistic_judger`
-- `--reviews`: parallel reviews for pessimistic/judger (default 3)
+- `--reviewer`: `standard | pessimistic | vpessimistic | pessimistic_judger | majority`
+- `--reviews`: parallel reviews for pessimistic/majority/judger (default 3)
 - `--chunk_length`: lines per chunk for `vpessimistic` (default 7)
 - `--evaluate_reviewer`: compare reviewer vs guider; writes metrics and samples
 - `--reasoning_effort`: `minimal | low | medium | high` (passed to compatible models)

@@ -379,6 +379,99 @@ class PessimisticVerifier():
 
         return rewards, final_reviews
 
+class MajorityVotingVerifier():
+    """
+    Runs multiple parallel reviews using the same checklist as Verifier.
+
+    Chooses the majority verdict among the reviews as the final decision.
+    Returns the first review whose verdict matches the majority as the response.
+    Tie policy: randomly select one of the reviews and adopt its verdict and
+    text as the final result.
+    """
+    def __init__(self, api_base, api_key, model, review_times: int = 3):
+        self.client = LLMClient(api_base, api_key, model)
+        self.review_times = max(1, review_times)
+
+    def _review_messages(self, problems, completions):
+        messages = []
+        for (p, c) in zip(problems, completions):
+            answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
+            base = [
+                {"role": "system", "content": (
+                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                )},
+                {"role": "user", "content": (
+                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
+                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
+                    "2. The solution actually derives the conclusion required by the original problem.\n"
+                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
+                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
+                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
+                    "Consistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
+                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
+                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
+                    " Do not include any restatement of the entire solution or problem.\n\n"
+                    f"<problem>{p}</problem>\n\n"
+                    f"<answer>{answer}</answer>"
+                )}
+            ]
+            for _ in range(self.review_times):
+                messages.append(base)
+        return messages
+
+    def __call__(self, problems, completions, **kwargs):
+        review_messages = self._review_messages(problems, completions)
+        all_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(review_messages, **kwargs))
+        k = self.review_times
+        grouped = [all_reviews[i * k:(i + 1) * k] for i in range(len(problems))]
+
+        final_reviews = []
+        rewards = []
+        for reviews in grouped:
+            # Count verdicts
+            positives = 0
+            negatives = 0
+            for r in reviews:
+                verdict = extract_xml_content(r, "verification")
+                if verdict == "true":
+                    positives += 1
+                else:
+                    negatives += 1
+
+            # Determine majority verdict; if tie, randomly choose a review
+            if positives > negatives:
+                majority_verdict_true = True
+                # Pick the first review that matches the majority verdict
+                chosen = None
+                for r in reviews:
+                    if extract_xml_content(r, "verification") == "true":
+                        chosen = r
+                        break
+                chosen = chosen or (reviews[0] if reviews else "")
+            elif negatives > positives:
+                majority_verdict_true = False
+                chosen = None
+                for r in reviews:
+                    if extract_xml_content(r, "verification") == "false":
+                        chosen = r
+                        break
+                chosen = chosen or (reviews[0] if reviews else "")
+            else:
+                # Tie: randomly select one review as the final result
+                if reviews:
+                    chosen = random.choice(reviews)
+                    majority_verdict_true = extract_xml_content(chosen, "verification") == "true"
+                else:
+                    chosen = ""
+                    majority_verdict_true = False
+
+            rewards.append(1.0 if majority_verdict_true else 0.0)
+            final_reviews.append(chosen)
+
+        return rewards, final_reviews
+
 class VPessimisticVerifier():
     """
     Chunked pessimistic verifier.
@@ -604,8 +697,8 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
-    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic"], help="the reviewer used for evaluation")
-    parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for pessimistic reviewer")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "majority"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for multi-review verifiers (pessimistic/majority)")
     parser.add_argument("--chunk_length", type=int, default=7, help="lines per chunk for vpessimistic reviewer")
     parser.add_argument("--evaluate_reviewer", action='store_true', default=False, help="enable evaluation of the reviewer against guider model as ground truth")
     parser.add_argument("--prover_base_url", default="", help="the base url for prover")
@@ -711,6 +804,9 @@ def main():
         if args.reviewer == "pessimistic":
             # Use the new PessimisticVerifier (first error wins)
             evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+        elif args.reviewer == "majority":
+            # Majority voting over multiple reviews
+            evaluator = MajorityVotingVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
         elif args.reviewer == "vpessimistic":
             # Chunked pessimistic verifier (focus per-chunk)
             evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
