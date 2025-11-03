@@ -550,6 +550,9 @@ class VPessimisticVerifier():
             per_item_chunk_counts.append(len(msgs))
             batch_messages.extend(msgs)
 
+        # Expose counts for logging/analysis
+        self.last_chunk_counts = per_item_chunk_counts[:]
+
         # Run inference over all chunks
         all_chunk_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(batch_messages, **kwargs))
 
@@ -887,6 +890,33 @@ def main():
     logger.info("evaluation ended")
     vars_dict = vars(args)
     vars_dict["accuracy"] = accuracy
+    # Reviewer cost metrics for post-hoc cost/performance analysis
+    reviewer_cost = {"reviewer": args.reviewer}
+    num_samples = len(problems)
+    if args.reviewer == "vpessimistic":
+        counts = getattr(evaluator, "last_chunk_counts", []) or []
+        total_reviews = sum(counts)
+        avg_per_sample = (total_reviews / len(counts)) if counts else 0.0
+        reviewer_cost.update({
+            "total_reviews": total_reviews,
+            "avg_reviews_per_sample": avg_per_sample,
+            "min_reviews_per_sample": (min(counts) if counts else 0),
+            "max_reviews_per_sample": (max(counts) if counts else 0),
+        })
+    else:
+        if args.reviewer == "standard":
+            per_sample = 1
+        elif args.reviewer in {"pessimistic", "majority"}:
+            per_sample = int(args.reviews)
+        elif args.reviewer == "pessimistic_judger":
+            per_sample = int(args.reviews) + 1  # k reviews + 1 final judger
+        else:
+            per_sample = 1
+        reviewer_cost.update({
+            "reviews_per_sample": per_sample,
+            "total_reviews": per_sample * num_samples,
+        })
+    vars_dict["reviewer_cost"] = reviewer_cost
     # Token stats: skip prover token stats when using preloaded samples
     if args.verifier_samples:
         average_prover_inp_tokens = None
