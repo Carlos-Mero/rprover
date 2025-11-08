@@ -85,6 +85,56 @@ def _load_jsonl_problems(jsonl_path: Path, content_keys: tuple[str, ...] = ("mar
     logger.info("Loaded %d problems from %s", len(problems), jsonl_path)
     return problems
 
+# For dataset decryption purposes!
+def _derive_keystream(canary: str, length: int) -> bytes:
+    import hashlib
+    from math import ceil
+    digest = hashlib.sha256(canary.encode("utf-8")).digest()
+    if length <= len(digest):
+        return digest[:length]
+    repeats = ceil(length / len(digest))
+    return (digest * repeats)[:length]
+
+def _xor_bytes(data: bytes, key_stream: bytes) -> bytes:
+    if len(data) != len(key_stream):
+        raise ValueError("Data and keystream must be the same length for XOR.")
+    return bytes([a ^ b for a, b in zip(data, key_stream)])
+
+def _deserialize_field(text: str):
+    try:
+        parsed = json.loads(text)
+        return parsed
+    except Exception:
+        return text
+
+
+def decrypt_str(input_str, canary):
+    import base64
+    if input_str == "":
+        return ""
+    ct = base64.b64decode(input_str)
+    ks = _derive_keystream(canary, len(ct))
+    pt = _xor_bytes(ct, ks)
+    text = pt.decode("utf-8")
+    return _deserialize_field(text)
+
+def decrypt_h2eval_sample(example):
+    if "canary" not in example:
+        raise ValueError("Missing canary field `canary`.")
+    canary = example["canary"]
+    if not isinstance(canary, str):
+        raise ValueError("Canary should be a string.")
+
+    target_fields = ["question", "model_response_by_step", "human_labels", "human_labels_first_error_idx"]
+    for k, v in example.items():
+        if k in target_fields and isinstance(v, str):
+            try:
+                example[k] = decrypt_str(v, canary)
+            except Exception:
+                example[k] = v
+
+    return example
+
 def prepare_dataset(dataset_path):
     """
     this function prepares datasets according to the given path
@@ -124,6 +174,12 @@ def prepare_dataset(dataset_path):
             }
         )
         ds = concatenate_datasets([ds24, ds25])
+    elif dataset_path == "Salesforce/Hard2Verify":
+        ds = load_dataset(dataset_path, split="test")
+        ds = ds.map(decrypt_h2eval_sample)
+        ds = ds.rename_column("question", "problem")
+        ds = ds.rename_column("model_response_by_step", "proof")
+        ds = ds.rename_column("human_labels_first_error_idx", "error_idx")
     else:
         raise NotImplementedError(f"Unknown dataset name or path: {dataset_path}")
 
@@ -729,16 +785,25 @@ def main():
     # If verifier_samples is provided, use it to load problems/proofs and GT labels
     loaded_verifier_samples = None
     if args.verifier_samples:
-        vs_path = Path(args.verifier_samples)
-        with vs_path.open("r", encoding="utf-8") as f:
-            loaded_verifier_samples = json.load(f)
-        if not isinstance(loaded_verifier_samples, list):
-            raise ValueError("verifier_samples must be a list of sample dicts")
-        problems = [s.get("problem", "") for s in loaded_verifier_samples]
-        proofs = [s.get("proof", "") for s in loaded_verifier_samples]
-        preloaded_gt_labels = [bool(s.get("gt_label", False)) for s in loaded_verifier_samples]
-        preloaded_gt_texts = [s.get("gt_text", "") for s in loaded_verifier_samples]
-        logger.info("Loaded %d samples from verifier_samples: %s", len(problems), vs_path)
+        if args.verifier_samples == "Salesforce/Hard2Verify":
+            ds = load_dataset(args.verifier_samples, split="test")
+            ds = ds.map(decrypt_h2eval_sample)
+            problems = [e["question"] for e in ds]
+            proofs = ["\n".join(e["model_response_by_step"]) for e in ds]
+            preloaded_gt_texts = [e["human_labels_first_error_idx"] for e in ds]
+            preloaded_gt_labels = [t < 0 for t in preloaded_gt_texts]
+            logger.info("Loaded %d samples from verifier_samples: %s", len(problems), args.verifier_samples)
+        else:
+            vs_path = Path(args.verifier_samples)
+            with vs_path.open("r", encoding="utf-8") as f:
+                loaded_verifier_samples = json.load(f)
+            if not isinstance(loaded_verifier_samples, list):
+                raise ValueError("verifier_samples must be a list of sample dicts")
+            problems = [s.get("problem", "") for s in loaded_verifier_samples]
+            proofs = [s.get("proof", "") for s in loaded_verifier_samples]
+            preloaded_gt_labels = [bool(s.get("gt_label", False)) for s in loaded_verifier_samples]
+            preloaded_gt_texts = [s.get("gt_text", "") for s in loaded_verifier_samples]
+            logger.info("Loaded %d samples from verifier_samples: %s", len(problems), vs_path)
     else:
         ds = prepare_dataset(args.eval_dataset)
         problems = [e['problem'] for e in ds]
