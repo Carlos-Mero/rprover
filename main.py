@@ -210,6 +210,8 @@ class LLMClient():
                         api_key=self.api_key,
                         drop_params=True,
                         temperature=1.0,
+                        timeout=3600,
+                        num_retries=7,
                         **kwargs)
                 return resp
             except Exception as e:
@@ -655,6 +657,7 @@ class ProgressivePessimisticVerifier():
         self.client = LLMClient(api_base, api_key, model)
         self.max_iters = max(1, int(max_iters))
         self.min_chunk_size = max(1, int(min_chunk_size))
+        self.last_review_counts: list[int] = []
 
         self.NO_ERROR_FALLBACK: str = (
             "<verification>true</verification>\n"
@@ -716,12 +719,14 @@ class ProgressivePessimisticVerifier():
     def __call__(self, problems, completions, **kwargs):
         total = len(problems)
         if total == 0:
+            self.last_review_counts = []
             return [], []
 
         proofs = [strip_think_simple(c if isinstance(c, str) else c[0]['content']) for c in completions]
         evals: list[float | None] = [None] * total
         final_texts = [""] * total
         pending_indices = list(range(total))
+        total_review_counts = [0] * total
 
         for iteration in range(self.max_iters):
             if not pending_indices:
@@ -737,6 +742,7 @@ class ProgressivePessimisticVerifier():
                 msgs = self._build_messages_for_one(problem, proof, chunk_length)
                 index_order.append(idx)
                 per_item_counts.append(len(msgs))
+                total_review_counts[idx] += len(msgs)
                 batch_messages.extend(msgs)
 
             if not batch_messages:
@@ -781,6 +787,7 @@ class ProgressivePessimisticVerifier():
                 evals[i] = 1.0
                 final_texts[i] = self.NO_ERROR_FALLBACK
 
+        self.last_review_counts = total_review_counts
         return evals, final_texts
 
 class NaiveProver():
@@ -1109,8 +1116,11 @@ def main():
     # Reviewer cost metrics for post-hoc cost/performance analysis
     reviewer_cost = {"reviewer": args.reviewer}
     num_samples = len(problems)
-    if args.reviewer == "vpessimistic":
-        counts = getattr(evaluator, "last_chunk_counts", []) or []
+    if args.reviewer in {"vpessimistic", "progressive"}:
+        if args.reviewer == "vpessimistic":
+            counts = getattr(evaluator, "last_chunk_counts", []) or []
+        else:
+            counts = getattr(evaluator, "last_review_counts", []) or []
         total_reviews = sum(counts)
         avg_per_sample = (total_reviews / len(counts)) if counts else 0.0
         reviewer_cost.update({
