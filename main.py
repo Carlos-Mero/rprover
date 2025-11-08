@@ -209,6 +209,7 @@ class LLMClient():
                         api_base=self.api_base,
                         api_key=self.api_key,
                         drop_params=True,
+                        temperature=1.0,
                         **kwargs)
                 return resp
             except Exception as e:
