@@ -644,6 +644,145 @@ class VPessimisticVerifier():
 
         return evals, final_texts
 
+class ProgressivePessimisticVerifier():
+    """
+    Iteratively applies chunked pessimistic verification with progressively
+    finer granularity. It starts with a full-proof check and then doubles the
+    number of chunks (down to min_chunk_size per chunk) for still-positive
+    samples until either an error is found or max_iters is reached.
+    """
+    def __init__(self, api_base, api_key, model, max_iters: int = 3, min_chunk_size: int = 6):
+        self.client = LLMClient(api_base, api_key, model)
+        self.max_iters = max(1, int(max_iters))
+        self.min_chunk_size = max(1, int(min_chunk_size))
+
+        self.NO_ERROR_FALLBACK: str = (
+            "<verification>true</verification>\n"
+            "No critical error found in this proof after progressive chunked review. "
+            "All passes (from coarse to fine) considered the solution correct overall. "
+            "Minor, non-decisive issues may exist but do not undermine correctness."
+        )
+
+    def _split_into_chunks(self, proof: str, chunk_length: int) -> list[str]:
+        lines = (proof or "").splitlines()
+        if not lines:
+            return [proof or ""]
+        chunks = []
+        for i in range(0, len(lines), chunk_length):
+            chunk_lines = lines[i:i + chunk_length]
+            chunks.append("\n".join(chunk_lines))
+        return chunks
+
+    def _build_messages_for_one(self, problem: str, full_proof: str, chunk_length: int) -> list[list[dict]]:
+        chunks = self._split_into_chunks(full_proof, chunk_length)
+        messages_per_chunk = []
+        for idx, chunk in enumerate(chunks, start=1):
+            messages_per_chunk.append([
+                {"role": "system", "content": (
+                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                )},
+                {"role": "user", "content": (
+                    "We provide the original problem and the complete proposed solution for full context. "
+                    "Then we provide a specific chunk from the solution for focused checking. "
+                    "Your task: Check ONLY the given chunk for errors while considering the overall context.\n\n"
+                    "Checklist:\n"
+                    "1. The chunk’s reasoning and calculations adhere to mathematical correctness.\n"
+                    "2. Any theorems used in the chunk match their hypotheses and conclusions.\n"
+                    "3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.\n\n"
+                    "Consistency and error-severity policy (important):\n"
+                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.\n"
+                    "- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.\n\n"
+                    "Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. "
+                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the chunk.\n\n"
+                    f"<problem>{problem}</problem>\n\n"
+                    f"<full_answer>{full_proof}</full_answer>\n\n"
+                    f"<chunk_index>{idx}</chunk_index>\n"
+                    f"<chunk>{chunk}</chunk>"
+                )}
+            ])
+        return messages_per_chunk
+
+    def _chunk_length_for_iteration(self, proof: str, iteration: int) -> int:
+        lines = (proof or "").splitlines()
+        num_lines = len(lines)
+        if num_lines == 0:
+            return self.min_chunk_size
+        if iteration == 0:
+            return max(num_lines, self.min_chunk_size)
+        target_chunks = max(1, 2 ** iteration)
+        approx_length = (num_lines + target_chunks - 1) // target_chunks
+        return max(self.min_chunk_size, approx_length)
+
+    def __call__(self, problems, completions, **kwargs):
+        total = len(problems)
+        if total == 0:
+            return [], []
+
+        proofs = [strip_think_simple(c if isinstance(c, str) else c[0]['content']) for c in completions]
+        evals: list[float | None] = [None] * total
+        final_texts = [""] * total
+        pending_indices = list(range(total))
+
+        for iteration in range(self.max_iters):
+            if not pending_indices:
+                break
+
+            batch_messages = []
+            per_item_counts = []
+            index_order = []
+            for idx in pending_indices:
+                problem = problems[idx]
+                proof = proofs[idx]
+                chunk_length = self._chunk_length_for_iteration(proof, iteration)
+                msgs = self._build_messages_for_one(problem, proof, chunk_length)
+                index_order.append(idx)
+                per_item_counts.append(len(msgs))
+                batch_messages.extend(msgs)
+
+            if not batch_messages:
+                break
+
+            chunk_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(batch_messages, **kwargs))
+
+            cursor = 0
+            next_pending = []
+            for sample_idx, count in zip(index_order, per_item_counts):
+                sample_reviews = chunk_reviews[cursor:cursor + count]
+                cursor += count
+
+                first_error = None
+                for review in sample_reviews:
+                    verdict = extract_xml_content(review, "verification")
+                    if verdict == "false":
+                        first_error = strip_think_simple(review)
+                        break
+
+                if first_error:
+                    evals[sample_idx] = 0.0
+                    final_texts[sample_idx] = first_error
+                else:
+                    if iteration == self.max_iters - 1:
+                        evals[sample_idx] = 1.0
+                        final_texts[sample_idx] = self.NO_ERROR_FALLBACK
+                    else:
+                        next_pending.append(sample_idx)
+
+            pending_indices = next_pending
+
+        # Any remaining samples (e.g., no further iterations but never failed) are treated as passes.
+        for idx in pending_indices:
+            if evals[idx] is None:
+                evals[idx] = 1.0
+                final_texts[idx] = self.NO_ERROR_FALLBACK
+
+        # For any sample that never received a review (e.g., empty proof), ensure defaults.
+        for i, value in enumerate(evals):
+            if value is None:
+                evals[i] = 1.0
+                final_texts[i] = self.NO_ERROR_FALLBACK
+
+        return evals, final_texts
+
 class NaiveProver():
     """
     NaiveProver directly proves the given problem
@@ -757,9 +896,11 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
-    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "majority"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "majority", "progressive"], help="the reviewer used for evaluation")
     parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for multi-review verifiers (pessimistic/majority)")
     parser.add_argument("--chunk_length", type=int, default=7, help="lines per chunk for vpessimistic reviewer")
+    parser.add_argument("--progressive_max_iters", type=int, default=3, help="maximum refinement passes for progressive reviewer")
+    parser.add_argument("--progressive_min_chunk_size", type=int, default=6, help="minimum lines per chunk for progressive reviewer")
     parser.add_argument("--evaluate_reviewer", action='store_true', default=False, help="enable evaluation of the reviewer against guider model as ground truth")
     parser.add_argument("--prover_base_url", default="", help="the base url for prover")
     parser.add_argument("--eval_base_url", default="", help="the base url for evaluator")
@@ -879,6 +1020,15 @@ def main():
         elif args.reviewer == "vpessimistic":
             # Chunked pessimistic verifier (focus per-chunk)
             evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
+        elif args.reviewer == "progressive":
+            # Progressive chunking: coarse-to-fine pessimistic verifier
+            evaluator = ProgressivePessimisticVerifier(
+                eval_base_url,
+                eval_api_key,
+                args.eval_model,
+                max_iters=args.progressive_max_iters,
+                min_chunk_size=args.progressive_min_chunk_size,
+            )
         elif args.reviewer == "pessimistic_judger":
             # Two-phase: parallel reviews then final judger decision
             evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
