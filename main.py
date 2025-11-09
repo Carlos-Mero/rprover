@@ -828,6 +828,7 @@ def main():
     parser.add_argument("--prover_api_key", default="", help="the api key for the prover")
     parser.add_argument("--eval_api_key", default="", help="the api key for the evaluator")
     parser.add_argument("--guider_api_key", default="", help="the api key for the guider model (falls back to eval -> prover)")
+    parser.add_argument("--enable_thinking", action=argparse.BooleanOptionalAction, default=True, help="toggle enable_thinking parameter for models that support reasoning traces")
     parser.add_argument("--agenttrain", action='store_true', default=False, help="enable agentic training while running this program")
     parser.add_argument(
         "--verifier_samples",
@@ -894,7 +895,11 @@ def main():
         striped_proofs = [strip_think_simple(proof) for proof in proofs]
         logger.info("Using preloaded proofs from verifier_samples, skipping prover generation")
     else:
-        proofs = prover(problems, reasoning_effort=args.reasoning_effort)
+        proofs = prover(
+            problems,
+            reasoning_effort=args.reasoning_effort,
+            enable_thinking=args.enable_thinking,
+        )
         striped_proofs = [strip_think_simple(proof) for proof in proofs]
         logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
 
@@ -921,7 +926,12 @@ def main():
         evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
     else:
         evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
-    evals, verifications = evaluator(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+    evals, verifications = evaluator(
+        problems,
+        striped_proofs,
+        reasoning_effort=args.reasoning_effort,
+        enable_thinking=args.enable_thinking,
+    )
     accuracy = sum(evals) / len(evals)
     logger.info(f"Obtained final accuracy: {accuracy}")
 
@@ -934,8 +944,13 @@ def main():
             gt_texts = preloaded_gt_texts
             logger.info("Using GT labels from verifier_samples; skipping new GT verification")
         else:
-            gt_verifier = ProgressivePessimisticVerifier(guider_base_url, guider_api_key, args.guider_model)
-            gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+            gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
+            gt_labels, gt_texts = gt_verifier(
+                problems,
+                striped_proofs,
+                reasoning_effort=args.reasoning_effort,
+                enable_thinking=args.enable_thinking,
+            )
 
         preds = [int(x) for x in evals]
         gts = [int(x) for x in gt_labels]
