@@ -805,91 +805,6 @@ class NaiveProver():
         results = ASYNC_LOOP.run(self.client.infer_batch_async(all_messages, **kwargs))
         return results
 
-class GProver():
-    """
-    This prover directly receives guidance from a stronger gmodel and tries to prove a new theorem
-    """
-    def __init__(self, api_base, api_key, model, gapi_base, gapi_key, gmodel):
-        self.client = LLMClient(api_base, api_key, model)
-        self.gclient = LLMClient(gapi_base, gapi_key, gmodel)
-
-    def __call__(self, problems: list[str], **kwargs):
-        g_messages = [
-            [
-                {"role": "user", "content": f"Please provide a complete and rigorous solution to this problem:\n\n{p}"}
-            ]
-            for p in problems
-        ]
-        gresults = ASYNC_LOOP.run(self.gclient.infer_batch_async(g_messages, **kwargs))
-        all_messages = [
-            [
-                {"role": "user", "content": f"Please provide a complete and rigorous solution to this problem:\n\n{p}\n\nHere we have collected a candidate proof which you may use as a reference:\n\n{proof}"}
-            ]
-            for p, proof in zip(problems, gresults)
-        ]
-        results = ASYNC_LOOP.run(self.client.infer_batch_async(all_messages, **kwargs))
-        return results
-
-class HProver():
-    """
-    This prover tries to prove a problem with the hints from a stronger LRM
-    """
-    def __init__(self, api_base, api_key, model, gapi_base, gapi_key, gmodel):
-        self.client = LLMClient(api_base, api_key, model)
-        self.gclient = LLMClient(gapi_base, gapi_key, gmodel)
-
-    def __call__(self, problems: list[str], **kwargs):
-        g_messages = [
-            [
-                {"role": "user", "content": f"Please carefully analyse this problem and provide some hints on how to solve it:\n\n{p}"}
-            ]
-            for p in problems
-        ]
-        gresults = ASYNC_LOOP.run(self.gclient.infer_batch_async(g_messages, **kwargs))
-        all_messages = [
-            [
-                {"role": "user", "content": f"Please provide a complete and rigorous solution to this problem:\n\n{p}\n\nHere are some hints that might help you with this problem:\n\n{hint}"}
-            ]
-            for p, hint in zip(problems, gresults)
-        ]
-        results = ASYNC_LOOP.run(self.client.infer_batch_async(all_messages, **kwargs))
-        return results
-
-class ACEProver():
-    """
-    This prover collects a series of hints from gpt-5 and tries to prove new theorems
-    """
-    def __init__(self, api_base, api_key, model, gapi_base, gapi_key, gmodel):
-        self.client = LLMClient(api_base, api_key, model)
-        self.gclient = LLMClient(gapi_base, gapi_key, gmodel)
-        self.exps = []
-
-    def format_exps(self):
-        all_exp = ""
-        for i, exp in enumerate(self.exps):
-            all_exp += f"{i}. {exp}"
-        return all_exp
-
-    def __call__(self, problems: list[str], **kwargs):
-        g_messages = [
-            [
-                {"role": "user", "content": f"Please carefully analyse this problem and summarize some useful experiences that might be useful for solving similar problems. You should respond in no more than two sentences:\n\n{p}"}
-            ]
-            for p in problems[:100]
-        ]
-        gresults = ASYNC_LOOP.run(self.gclient.infer_batch_async(g_messages, **kwargs))
-        self.exps = gresults
-        full_exp = self.format_exps()
-
-        all_messages = [
-            [
-                {"role": "user", "content": f"You are an experienced mathematician that is required to solve a math problem. Here are some instructions that might help you with math problems:\n\n{full_exp}\n\nNow please provide a complete and rigorous solution to this problem:\n\n{p}"}
-            ]
-            for p in problems
-        ]
-        results = ASYNC_LOOP.run(self.client.infer_batch_async(all_messages, **kwargs))
-        return results
-
 def main():
     parser = argparse.ArgumentParser(
         description="RProver"
@@ -900,7 +815,7 @@ def main():
     parser.add_argument("-gm", "--guider_model", help="the model used for guidance", default="")
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
-    parser.add_argument("--method", default="rlvr", choices=["naive", "gprover", "hprover", "aceprover"], help="the training / evaluation method switch")
+    parser.add_argument("--method", default="naive", choices=["naive"], help="the training / evaluation method switch")
     parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "majority", "progressive"], help="the reviewer used for evaluation")
     parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for multi-review verifiers (pessimistic/majority)")
     parser.add_argument("--chunk_length", type=int, default=7, help="lines per chunk for vpessimistic reviewer")
@@ -965,43 +880,11 @@ def main():
     guider_base_url = args.guider_base_url or eval_base_url
     guider_api_key = args.guider_api_key or eval_api_key
 
-    if args.method == "naive":
-        prover = NaiveProver(
-            api_base=prover_base_url,
-            api_key=prover_api_key,
-            model=args.proof_model,
-        )
-    elif args.method == "gprover":
-        prover = GProver(
-            api_base=prover_base_url,
-            api_key=prover_api_key,
-            model=args.proof_model,
-            gapi_base=guider_base_url,
-            gapi_key=guider_api_key,
-            gmodel=args.guider_model
-        )
-    elif args.method == "hprover":
-        prover = HProver(
-            api_base=prover_base_url,
-            api_key=prover_api_key,
-            model=args.proof_model,
-            gapi_base=guider_base_url,
-            gapi_key=guider_api_key,
-            gmodel=args.guider_model
-        )
-    elif args.method == "aceprover":
-        prover = ACEProver(
-            api_base=prover_base_url,
-            api_key=prover_api_key,
-            model=args.proof_model,
-            gapi_base=guider_base_url,
-            gapi_key=guider_api_key,
-            gmodel=args.guider_model
-        )
-    elif args.method == "aceprover":
-        raise NotImplementedError("aceprover is not implemented")
-    else:
-        raise NotImplementedError("unknown method")
+    prover = NaiveProver(
+        api_base=prover_base_url,
+        api_key=prover_api_key,
+        model=args.proof_model,
+    )
 
     logdir = get_current_log_path(args.log_dir)
     logdir.mkdir(parents=True, exist_ok=True)
@@ -1015,97 +898,94 @@ def main():
         striped_proofs = [strip_think_simple(proof) for proof in proofs]
         logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
 
-    if args.method == "naive" or args.method == "gprover" or args.method == "hprover" or args.method == "aceprover":
-        if args.reviewer == "pessimistic":
-            # Use the new PessimisticVerifier (first error wins)
-            evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
-        elif args.reviewer == "majority":
-            # Majority voting over multiple reviews
-            evaluator = MajorityVotingVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
-        elif args.reviewer == "vpessimistic":
-            # Chunked pessimistic verifier (focus per-chunk)
-            evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
-        elif args.reviewer == "progressive":
-            # Progressive chunking: coarse-to-fine pessimistic verifier
-            evaluator = ProgressivePessimisticVerifier(
-                eval_base_url,
-                eval_api_key,
-                args.eval_model,
-                max_iters=args.progressive_max_iters,
-                min_chunk_size=args.progressive_min_chunk_size,
-            )
-        elif args.reviewer == "pessimistic_judger":
-            # Two-phase: parallel reviews then final judger decision
-            evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
-        else:
-            evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
-        evals, verifications = evaluator(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
-        accuracy = sum(evals) / len(evals)
-        logger.info(f"Obtained final accuracy: {accuracy}")
-
-        # Optional: evaluate the reviewer against the guider model as ground truth
-        if args.evaluate_reviewer:
-            logger.info("Evaluating reviewer against guider model as ground truth")
-            if args.verifier_samples:
-                # Use ground-truth labels/texts from the provided verifier_samples file
-                gt_labels = preloaded_gt_labels
-                gt_texts = preloaded_gt_texts
-                logger.info("Using GT labels from verifier_samples; skipping new GT verification")
-            else:
-                gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
-                gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
-
-            preds = [int(x) for x in evals]
-            gts = [int(x) for x in gt_labels]
-            total = len(preds)
-            correct = sum(1 for p, g in zip(preds, gts) if p == g)
-            tp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 1)
-            tn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 0)
-            fp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 0)
-            fn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 1)
-            verifier_accuracy = correct / total if total else 0.0
-            precision = tp / (tp + fp) if (tp + fp) else None
-            recall = tp / (tp + fn) if (tp + fn) else None
-            f1 = (2 * precision * recall / (precision + recall)) if (precision and recall and (precision + recall)) else None
-
-            verifier_eval = {
-                "total": total,
-                "accuracy": verifier_accuracy,
-                "tp": tp,
-                "tn": tn,
-                "fp": fp,
-                "fn": fn,
-                "precision": precision,
-                "recall": recall,
-                "f1": f1,
-            }
-
-            # Save sample-level comparison
-            verifier_samples = [
-                {
-                    "problem": problem,
-                    "proof": proof,
-                    "pred_label": bool(pred),
-                    "pred_text": pred_text,
-                    "gt_label": bool(gt),
-                    "gt_text": gt_text,
-                }
-                for (problem, proof, pred, pred_text, gt, gt_text) in zip(
-                    problems, proofs, preds, verifications, gts, gt_texts
-                )
-            ]
-
-            with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
-                json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
-            with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
-                json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
-
-            # Add summary to logs.json payload
-            vars_dict_key = "verifier_evaluation"
-            # vars_dict defined below; collect into a temporary dict for later merge
-            extra_verifier_eval = {vars_dict_key: verifier_eval}
+    if args.reviewer == "pessimistic":
+        # Use the new PessimisticVerifier (first error wins)
+        evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+    elif args.reviewer == "majority":
+        # Majority voting over multiple reviews
+        evaluator = MajorityVotingVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
+    elif args.reviewer == "vpessimistic":
+        # Chunked pessimistic verifier (focus per-chunk)
+        evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
+    elif args.reviewer == "progressive":
+        # Progressive chunking: coarse-to-fine pessimistic verifier
+        evaluator = ProgressivePessimisticVerifier(
+            eval_base_url,
+            eval_api_key,
+            args.eval_model,
+            max_iters=args.progressive_max_iters,
+            min_chunk_size=args.progressive_min_chunk_size,
+        )
+    elif args.reviewer == "pessimistic_judger":
+        # Two-phase: parallel reviews then final judger decision
+        evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
     else:
-        raise NotImplementedError("unknown method")
+        evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
+    evals, verifications = evaluator(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+    accuracy = sum(evals) / len(evals)
+    logger.info(f"Obtained final accuracy: {accuracy}")
+
+    # Optional: evaluate the reviewer against the guider model as ground truth
+    if args.evaluate_reviewer:
+        logger.info("Evaluating reviewer against guider model as ground truth")
+        if args.verifier_samples:
+            # Use ground-truth labels/texts from the provided verifier_samples file
+            gt_labels = preloaded_gt_labels
+            gt_texts = preloaded_gt_texts
+            logger.info("Using GT labels from verifier_samples; skipping new GT verification")
+        else:
+            gt_verifier = ProgressivePessimisticVerifier(guider_base_url, guider_api_key, args.guider_model)
+            gt_labels, gt_texts = gt_verifier(problems, striped_proofs, reasoning_effort=args.reasoning_effort)
+
+        preds = [int(x) for x in evals]
+        gts = [int(x) for x in gt_labels]
+        total = len(preds)
+        correct = sum(1 for p, g in zip(preds, gts) if p == g)
+        tp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 1)
+        tn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 0)
+        fp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 0)
+        fn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 1)
+        verifier_accuracy = correct / total if total else 0.0
+        precision = tp / (tp + fp) if (tp + fp) else None
+        recall = tp / (tp + fn) if (tp + fn) else None
+        f1 = (2 * precision * recall / (precision + recall)) if (precision and recall and (precision + recall)) else None
+
+        verifier_eval = {
+            "total": total,
+            "accuracy": verifier_accuracy,
+            "tp": tp,
+            "tn": tn,
+            "fp": fp,
+            "fn": fn,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        }
+
+        # Save sample-level comparison
+        verifier_samples = [
+            {
+                "problem": problem,
+                "proof": proof,
+                "pred_label": bool(pred),
+                "pred_text": pred_text,
+                "gt_label": bool(gt),
+                "gt_text": gt_text,
+            }
+            for (problem, proof, pred, pred_text, gt, gt_text) in zip(
+                problems, proofs, preds, verifications, gts, gt_texts
+            )
+        ]
+
+        with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
+            json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
+        with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
+            json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
+
+        # Add summary to logs.json payload
+        vars_dict_key = "verifier_evaluation"
+        # vars_dict defined below; collect into a temporary dict for later merge
+        extra_verifier_eval = {vars_dict_key: verifier_eval}
 
 
     logger.info("evaluation ended")
@@ -1158,9 +1038,6 @@ def main():
     vars_dict["average_prover_opt_tokens"] = average_prover_opt_tokens
     vars_dict["average_eval_inp_tokens"] = average_eval_inp_tokens
     vars_dict["average_eval_opt_tokens"] = average_eval_opt_tokens
-
-    if hasattr(prover, 'exps'):
-        vars_dict["exps"] = prover.exps
 
     # Merge verifier evaluation summary if available
     try:
