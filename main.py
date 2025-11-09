@@ -194,6 +194,8 @@ class LLMClient():
         self.model = model
         self.input_tokens = []
         self.comp_tokens = []
+        self.last_input_tokens = []
+        self.last_comp_tokens = []
 
     async def _infer_one(self,
                          messages,
@@ -259,8 +261,12 @@ class LLMClient():
                 raise RuntimeError(f"Task {i} failed") from r
         logger.info("completed batch inference on %d samples",  len(all_messages))
         completions = [r.choices[0].message["content"] if r is not None else "" for r  in raw_results]
-        self.input_tokens = [r.usage.prompt_tokens for r in raw_results if r is not None]
-        self.comp_tokens = [r.usage.completion_tokens for r in raw_results if r is not None]
+        batch_input_tokens = [r.usage.prompt_tokens for r in raw_results if r is not None]
+        batch_comp_tokens = [r.usage.completion_tokens for r in raw_results if r is not None]
+        self.last_input_tokens = batch_input_tokens
+        self.last_comp_tokens = batch_comp_tokens
+        self.input_tokens.extend(batch_input_tokens)
+        self.comp_tokens.extend(batch_comp_tokens)
         return completions
 
 class Verifier():
@@ -1041,10 +1047,22 @@ def main():
         average_prover_inp_tokens = None
         average_prover_opt_tokens = None
     else:
-        average_prover_inp_tokens = sum(prover.client.input_tokens) / len(prover.client.input_tokens)
-        average_prover_opt_tokens = sum(prover.client.comp_tokens) / len(prover.client.comp_tokens)
-    average_eval_inp_tokens = sum(evaluator.client.input_tokens) / len(evaluator.client.input_tokens)
-    average_eval_opt_tokens = sum(evaluator.client.comp_tokens) / len(evaluator.client.comp_tokens)
+        average_prover_inp_tokens = (
+            sum(prover.client.input_tokens) / len(prover.client.input_tokens)
+            if prover.client.input_tokens else 0.0
+        )
+        average_prover_opt_tokens = (
+            sum(prover.client.comp_tokens) / len(prover.client.comp_tokens)
+            if prover.client.comp_tokens else 0.0
+        )
+    average_eval_inp_tokens = (
+        sum(evaluator.client.input_tokens) / len(evaluator.client.input_tokens)
+        if evaluator.client.input_tokens else 0.0
+    )
+    average_eval_opt_tokens = (
+        sum(evaluator.client.comp_tokens) / len(evaluator.client.comp_tokens)
+        if evaluator.client.comp_tokens else 0.0
+    )
     logger.info(f"Average token inputs in prover: {average_prover_inp_tokens}")
     logger.info(f"Average completion tokens in prover: {average_prover_opt_tokens}")
     logger.info(f"Average token inputs in evaluator: {average_eval_inp_tokens}")
@@ -1069,8 +1087,8 @@ def main():
         prover_inp_tokens = [None] * len(problems)
         prover_comp_tokens = [None] * len(problems)
     else:
-        prover_inp_tokens = prover.client.input_tokens
-        prover_comp_tokens = prover.client.comp_tokens
+        prover_inp_tokens = prover.client.last_input_tokens
+        prover_comp_tokens = prover.client.last_comp_tokens
 
     samples = [
         {
