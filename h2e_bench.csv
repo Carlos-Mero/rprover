@@ -1,0 +1,4 @@
+model, method, TP, TN, FP, FN, TNR, total_reviews, avg_inp_tokens, avg_opt_tokens, note
+gpt-5-mini-medium, standard, 42, 106, 52, 0, 0.67, 200, 2395.05, 3907.24, 
+gpt-5-mini-medium, pes@3, 39, 115, 43, 3, 0.73, 600, 2422.05, 2596.73, 
+gpt-5-mini-medium, 
