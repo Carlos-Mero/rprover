@@ -197,6 +197,10 @@ class LLMClient():
         self.last_input_tokens = []
         self.last_comp_tokens = []
 
+    def _supports_enable_thinking(self) -> bool:
+        model_name = (self.model or "").lower()
+        return "deepseek" in model_name or "qwen" in model_name
+
     async def _infer_one(self,
                          messages,
                          sem: asyncio.Semaphore,
@@ -233,8 +237,11 @@ class LLMClient():
         logger = logging.getLogger("evaluator")
         logger.info("running batch inference on %d samples", len(all_messages))
         sem = asyncio.Semaphore(concurrency)
-        ALLOWED_PARAM_KEYS = {"reasoning_effort", "thinking", "enable_thinking"}
+        ALLOWED_PARAM_KEYS = {"reasoning_effort", "thinking"}
         infer_params = {k: v for k, v in kwargs.items() if k in ALLOWED_PARAM_KEYS}
+        enable_thinking = kwargs.get("enable_thinking")
+        if enable_thinking is not None and self._supports_enable_thinking():
+            infer_params["enable_thinking"] = enable_thinking
         async def _run_one(index: int, messages):
             try:
                 r = await self._infer_one(messages, sem, **infer_params)
@@ -950,7 +957,12 @@ def main():
             gt_texts = preloaded_gt_texts
             logger.info("Using GT labels from verifier_samples; skipping new GT verification")
         else:
-            gt_verifier = Verifier(guider_base_url, guider_api_key, args.guider_model)
+            gt_verifier = ProgressivePessimisticVerifier(guider_base_url,
+                                                         guider_api_key,
+                                                         args.guider_model,
+                                                         max_iters=args.progressive_max_iters,
+                                                         min_chunk_size=args.progressive_min_chunk_size,
+                                                         )
             gt_labels, gt_texts = gt_verifier(
                 problems,
                 striped_proofs,
