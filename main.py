@@ -178,8 +178,17 @@ def prepare_dataset(dataset_path):
         ds = load_dataset(dataset_path, split="test")
         ds = ds.map(decrypt_h2eval_sample)
         ds = ds.rename_column("question", "problem")
-        ds = ds.rename_column("model_response_by_step", "proof")
-        ds = ds.rename_column("human_labels_first_error_idx", "error_idx")
+        proofs = ["\n".join(e["model_response_by_step"]) for e in ds]
+        ds = ds.add_column("proof", proofs)
+        gt_evals = [e["human_labels_first_error_idx"] < 0 for e in ds]
+        ds = ds.add_column("gt_eval", gt_evals)
+        # ds = ds.rename_column("human_labels_first_error_idx", "error_idx")
+    elif dataset_path == "INSAIT-Institute/OPC":
+        # We only use test set of this dataset
+        ds = load_dataset(dataset_path, split="test")
+        ds = ds.rename_column("solution", "proof")
+        gt_evals = [e["score"][0] for e in ds]
+        ds = ds.add_column("gt_eval", gt_evals)
     else:
         raise NotImplementedError(f"Unknown dataset name or path: {dataset_path}")
 
@@ -861,13 +870,13 @@ def main():
     # If verifier_samples is provided, use it to load problems/proofs and GT labels
     loaded_verifier_samples = None
     if args.verifier_samples:
-        if args.verifier_samples == "Salesforce/Hard2Verify":
-            ds = load_dataset(args.verifier_samples, split="test")
-            ds = ds.map(decrypt_h2eval_sample)
-            problems = [e["question"] for e in ds]
-            proofs = ["\n".join(e["model_response_by_step"]) for e in ds]
-            preloaded_gt_texts = [e["human_labels_first_error_idx"] for e in ds]
-            preloaded_gt_labels = [t < 0 for t in preloaded_gt_texts]
+        if args.verifier_samples == "Salesforce/Hard2Verify" or args.verifier_samples == "INSAIT-Institute/OPC":
+            ds = prepare_dataset(args.verifier_samples)
+            problems = ds["problem"]
+            proofs = ds["proof"]
+            # preloaded_gt_texts = [e["human_labels_first_error_idx"] for e in ds]
+            preloaded_gt_labels = ds["gt_eval"]
+            preloaded_gt_texts = [None] * len(problems)
             logger.info("Loaded %d samples from verifier_samples: %s", len(problems), args.verifier_samples)
         else:
             vs_path = Path(args.verifier_samples)
