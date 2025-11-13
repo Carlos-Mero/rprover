@@ -1,9 +1,9 @@
 model, method, TP, TN, FP, FN, TNR, total_reviews, avg_inp_tokens, avg_opt_tokens, note
 gpt-5-medium, standard, 87, 164, 22, 19, 0.88, 292, 2512.42, 4631.46,
 gpt-5-medium, progressive, 79, 168, 18, 27, 0.90, 928, 3260.19, 2906.24,
-gpt-5-mini-medium, standard, 102, 141, 45, 4, 0.758, 292, 2512.42, 2356.89,
-gpt-5-mini-medium, progressive, 86, 147, 39, 20, 0.79, 1108, 3356.60, 1499.61,
-qwen3-30b-a3b, standard, 102, 88, 98, 4, 0.473, 292, 2520.95, 1758.70,
-qwen3-30b-a3b, progressive, 74, 134, 52, 32, 0.72, 1284, 3615.10, 1422.66,
+gpt-5-mini-medium, standard (opc), 99, 146, 40, 7, 0.785, 292, 2526.42, 2105.99,
+gpt-5-mini-medium, progressive (opc), 78, 170, 16, 28, 0.914, 1108, 3322.90, 1390.77,
+qwen3-30b-a3b, standard, 97, 110, 76, 9, 0.473, 292, 2534.95, 2042.66,
+qwen3-30b-a3b, progressive, 66, 170, 16, 40, 0.914, 1100, 3764.06, 1440.81,
 kimi-k2-thinking, standard,
 kimi-k2-thinking, progressive,

@@ -151,6 +151,13 @@ def prepare_dataset(dataset_path):
     }:
         problems = _load_jsonl_problems(Path(dataset_path), content_keys=("markdown_statement",))
         ds = Dataset.from_dict({"problem": problems})
+    elif dataset_path == "NP_dataset/gradingbench.csv":
+        ds = load_dataset("csv", data_files=dataset_path)
+        ds = ds["train"].select(range(300))
+        ds = ds.rename_column("Problem", "problem")
+        ds = ds.rename_column("Solution", "proof")
+        gt_evals = [int(e["Points"]) > 6 for e in ds]
+        ds = ds.add_column("gt_eval", gt_evals)
     elif dataset_path == "HuggingFaceH4/MATH-500":
         ds = load_dataset(dataset_path)
         ds = ds.remove_columns(["solution"])
@@ -870,7 +877,7 @@ def main():
     # If verifier_samples is provided, use it to load problems/proofs and GT labels
     loaded_verifier_samples = None
     if args.verifier_samples:
-        if args.verifier_samples == "Salesforce/Hard2Verify" or args.verifier_samples == "INSAIT-Institute/OPC":
+        if args.verifier_samples == "Salesforce/Hard2Verify" or args.verifier_samples == "INSAIT-Institute/OPC" or args.verifier_samples == "NP_dataset/gradingbench.csv":
             ds = prepare_dataset(args.verifier_samples)
             problems = ds["problem"]
             proofs = ds["proof"]
