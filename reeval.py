@@ -106,7 +106,7 @@ async def _reevaluate_one(sample: Dict[str, Any], sem: asyncio.Semaphore, model_
     problem = sample.get("problem", "")
     proof = sample.get("proof", "")
     review_text = sample.get("pred_text", "")
-    orig_label = bool(sample.get("pred_label", False))
+    orig_label = bool(sample.get("gt_label", False))
 
     messages = build_review_prompt(problem, proof, review_text)
     content = ""
@@ -173,7 +173,7 @@ async def reevaluate_reviews(
                     "problem": sample.get("problem", ""),
                     "proof": sample.get("proof", ""),
                     "review_text": sample.get("pred_text", ""),
-                    "original_label": bool(sample.get("pred_label", False)),
+                    "original_label": bool(sample.get("gt_label", False)),
                     "gt_label": bool(sample.get("gt_label", False)),
                     "gt_text": sample.get("gt_text", ""),
                     "reeval_response": "",
@@ -193,8 +193,8 @@ def compute_review_stats(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     comparable = [r for r in results if r.get("reeval_label") is not None]
     skipped = total - len(comparable)
 
-    preds = [bool(r.get("original_label", False)) for r in comparable]
-    gts = [bool(r.get("reeval_label")) for r in comparable]
+    gts = [bool(r.get("original_label", False)) for r in comparable]
+    preds = [bool(r.get("reeval_label")) for r in comparable]
 
     tp = sum(1 for p, g in zip(preds, gts) if p and g)
     tn = sum(1 for p, g in zip(preds, gts) if not p and not g)
