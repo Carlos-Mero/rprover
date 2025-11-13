@@ -155,7 +155,7 @@ def prepare_dataset(dataset_path):
         ds = load_dataset("csv", data_files=dataset_path)
         ds = ds["train"].select(range(300))
         ds = ds.rename_column("Problem", "problem")
-        ds = ds.rename_column("Solution", "proof")
+        ds = ds.rename_column("Response", "proof")
         gt_evals = [int(e["Points"]) > 6 for e in ds]
         ds = ds.add_column("gt_eval", gt_evals)
     elif dataset_path == "HuggingFaceH4/MATH-500":

@@ -1,3 +1,11 @@
 model, method, TP, TN, FP, FN, TNR, total_reviews, avg_inp_tokens, avg_opt_tokens, note
+gpt-5-medium, standard,
+gpt-5-medium, progressive@3/6,
+gpt-5-medium, progressive@3/6-rev,
 gpt-5-mini-medium, standard, 81, 154, 55, 10, 0.737, 300, 2084.12, 3289.05,
 gpt-5-mini-medium, progressive@3/6, 54, 177, 32, 37, 0.847, 997, 2820.15, 2726.53,
+gpt-5-mini-medium, progressive@3/6-rev, 78, 167, 42, 13, 0.800, 997, 2820.15, 2726.53,
+gemini-2.5-flash, standard, 76, 157, 52, 15, 0.751, 300, 2079.70, 13709.48,
+qwen3-30b-a3b, standard, 61, 176, 33, 30, 0.842, 300, 0, 0, 可能存在问题？？
+qwen3-30b-a3b, progressive@3/6,
+qwen3-30b-a3b, progressive@3/6-rev,
