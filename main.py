@@ -293,21 +293,20 @@ class Verifier():
         all_messages = [
             [
                 {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                    "You are a meticulous mathematics proof judge. Grade solutions using the Open Proof Corpus (OPC) policy: reward proofs that would earn at least 5/7 points, allow only minor fixable slips, and mark any substantial logical, computational, or justificatory gap as incorrect."
                 )},
                 {"role": "user", "content": (
-                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
-                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
-                    "2. The solution actually derives the conclusion required by the original problem.\n"
-                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
-                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
-                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
-                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
-                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
-                    " Do not include any restatement of the entire solution or problem.\n\n"
+                    "You will receive a math problem and a model-generated proof to evaluate. Follow this checklist:\n"
+                    "- Ensure the submission is indeed a math problem with its proposed proof.\n"
+                    "- Confirm the proof derives the exact conclusion requested by the problem.\n"
+                    "- Inspect each derivation or computation; every non-trivial step must be justified and algebra-heavy work must not be skipped.\n"
+                    "- Check that cited theorems are standard (easy to find, e.g., on Wikipedia) and that their hypotheses are satisfied.\n"
+                    "- Make sure no hidden assumptions beyond the problem statement are introduced.\n\n"
+                    "OPC grading guidance:\n"
+                    "- Treat the proof as correct if it would earn ≥5/7 points even with minor, easily fixable arithmetic slips, small omitted edge cases, or brief steps that follow immediately.\n"
+                    "- Mark it incorrect if it declares steps 'trivial' without justification, skips substantial computations or generalizations, relies on obscure results, or contains any unchecked error that impacts the conclusion.\n"
+                    "- Assume that when the author skips an allegedly trivial step, they cannot actually justify it.\n\n"
+                    "Reporting instructions: provide a concise analysis highlighting the most critical evidence. End the reasoning with `\\boxed{correct}` if the proof is acceptable or `\\boxed{incorrect}` otherwise. Immediately after the boxed verdict, append `<verification>true</verification>` for correct proofs (even with minor issues) or `<verification>false</verification>` for incorrect proofs. Do not restate the entire problem or solution.\n\n"
                     f"<problem>{p}</problem>\n\n"
                     f"<answer>{strip_think_simple(c if isinstance(c, str) else c[0]['content'])}</answer>"
                 )}
@@ -333,21 +332,20 @@ class PessimisticJudger():
             answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
             base = [
                 {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                    "You are a meticulous mathematics proof judge. Grade solutions using the Open Proof Corpus (OPC) policy: reward proofs that would earn at least 5/7 points, allow only minor fixable slips, and mark any substantial logical, computational, or justificatory gap as incorrect."
                 )},
                 {"role": "user", "content": (
-                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
-                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
-                    "2. The solution actually derives the conclusion required by the original problem.\n"
-                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
-                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
-                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
-                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
-                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
-                    " Do not include any restatement of the entire solution or problem.\n\n"
+                    "You will receive a math problem and a model-generated proof to evaluate. Follow this checklist:\n"
+                    "- Ensure the submission is indeed a math problem with its proposed proof.\n"
+                    "- Confirm the proof derives the exact conclusion requested by the problem.\n"
+                    "- Inspect each derivation or computation; every non-trivial step must be justified and algebra-heavy work must not be skipped.\n"
+                    "- Check that cited theorems are standard (easy to find, e.g., on Wikipedia) and that their hypotheses are satisfied.\n"
+                    "- Make sure no hidden assumptions beyond the problem statement are introduced.\n\n"
+                    "OPC grading guidance:\n"
+                    "- Treat the proof as correct if it would earn ≥5/7 points even with minor, easily fixable arithmetic slips, small omitted edge cases, or brief steps that follow immediately.\n"
+                    "- Mark it incorrect if it declares steps 'trivial' without justification, skips substantial computations or generalizations, relies on obscure results, or contains any unchecked error that impacts the conclusion.\n"
+                    "- Assume that when the author skips an allegedly trivial step, they cannot actually justify it.\n\n"
+                    "Reporting instructions: provide a concise analysis highlighting the most critical evidence. End the reasoning with `\\boxed{correct}` if the proof is acceptable or `\\boxed{incorrect}` otherwise. Immediately after the boxed verdict, append `<verification>true</verification>` for correct proofs (even with minor issues) or `<verification>false</verification>` for incorrect proofs. Do not restate the entire problem or solution.\n\n"
                     f"<problem>{p}</problem>\n\n"
                     f"<answer>{answer}</answer>"
                 )}
@@ -409,21 +407,20 @@ class PessimisticVerifier():
             answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
             base = [
                 {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                    "You are a meticulous mathematics proof judge. Grade solutions using the Open Proof Corpus (OPC) policy: reward proofs that would earn at least 5/7 points, allow only minor fixable slips, and mark any substantial logical, computational, or justificatory gap as incorrect."
                 )},
                 {"role": "user", "content": (
-                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
-                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
-                    "2. The solution actually derives the conclusion required by the original problem.\n"
-                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
-                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
-                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
-                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
-                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
-                    " Do not include any restatement of the entire solution or problem.\n\n"
+                    "You will receive a math problem and a model-generated proof to evaluate. Follow this checklist:\n"
+                    "- Ensure the submission is indeed a math problem with its proposed proof.\n"
+                    "- Confirm the proof derives the exact conclusion requested by the problem.\n"
+                    "- Inspect each derivation or computation; every non-trivial step must be justified and algebra-heavy work must not be skipped.\n"
+                    "- Check that cited theorems are standard (easy to find, e.g., on Wikipedia) and that their hypotheses are satisfied.\n"
+                    "- Make sure no hidden assumptions beyond the problem statement are introduced.\n\n"
+                    "OPC grading guidance:\n"
+                    "- Treat the proof as correct if it would earn ≥5/7 points even with minor, easily fixable arithmetic slips, small omitted edge cases, or brief steps that follow immediately.\n"
+                    "- Mark it incorrect if it declares steps 'trivial' without justification, skips substantial computations or generalizations, relies on obscure results, or contains any unchecked error that impacts the conclusion.\n"
+                    "- Assume that when the author skips an allegedly trivial step, they cannot actually justify it.\n\n"
+                    "Reporting instructions: provide a concise analysis highlighting the most critical evidence. End the reasoning with `\\boxed{correct}` if the proof is acceptable or `\\boxed{incorrect}` otherwise. Immediately after the boxed verdict, append `<verification>true</verification>` for correct proofs (even with minor issues) or `<verification>false</verification>` for incorrect proofs. Do not restate the entire problem or solution.\n\n"
                     f"<problem>{p}</problem>\n\n"
                     f"<answer>{answer}</answer>"
                 )}
@@ -553,25 +550,21 @@ class MajorityVotingVerifier():
 
 class VPessimisticVerifier():
     """
-    Chunked pessimistic verifier.
+    Chunked OPC-style verifier.
 
-    Instead of reviewing the whole proof at once, it splits the proof into
-    chunks of `chunk_length` lines. For each chunk, it asks the reviewer to
-    focus only on that chunk while still providing the full problem and full
-    proof for context. If any chunk is flagged incorrect (`<verification>false</verification>`),
-    the final verdict is false. It also aggregates all error reports found.
+    It splits the proof into chunks of `chunk_length` lines and asks the reviewer
+    to score each chunk using OPC deductions (0 if fine, 1-7 depending on severity).
+    The final proof score starts at 7 points, subtracts the sum of chunk deductions
+    (clamped to [0, 7]), and is considered correct iff the remaining score ≥ 5.
     """
     def __init__(self, api_base, api_key, model, chunk_length: int = 7):
         self.client = LLMClient(api_base, api_key, model)
         self.chunk_length = max(1, int(chunk_length))
         
-        # Constant fallback text when no critical errors are found across all chunks
+        # Constant fallback text when no meaningful deductions are found across all chunks
         self.NO_ERROR_FALLBACK: str = (
-            "<verification>true</verification>\n"
-            "No critical error found in this proof after chunked review. "
-            "All inspected chunks were considered correct overall given the problem and prior steps. "
-            "Minor, non-decisive issues (e.g., superficial notation or small slips later corrected) "
-            "may exist but do not undermine correctness."
+            "OPC chunked score: 7/7 (total deduction 0). No substantive issues detected. "
+            "<verification>true</verification>"
         )
 
     def _split_into_chunks(self, proof: str) -> list[str]:
@@ -591,21 +584,25 @@ class VPessimisticVerifier():
         for idx, chunk in enumerate(chunks, start=1):
             messages_per_chunk.append([
                 {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                    "You are a meticulous OPC-style math proof grader. Score chunks so that a flawless chunk receives 0 deduction points and increasingly severe issues incur 1-7 points."
                 )},
                 {"role": "user", "content": (
-                    "We provide the original problem and the complete proposed solution for full context. "
-                    "Then we provide a specific chunk from the solution for focused checking. "
-                    "Your task: Check ONLY the given chunk for errors while considering the overall context.\n\n"
+                    "We provide the original problem, the complete proposed proof for context, and a specific chunk to inspect. "
+                    "Judge ONLY the highlighted chunk, but be mindful of earlier deductions and stated assumptions.\n\n"
                     "Checklist:\n"
-                    "1. The chunk’s reasoning and calculations adhere to mathematical correctness.\n"
-                    "2. Any theorems used in the chunk match their hypotheses and conclusions.\n"
-                    "3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.\n\n"
-                    "Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. "
-                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the chunk.\n\n"
+                    "- Verify the chunk genuinely advances the requested conclusion and does not assume unproven statements.\n"
+                    "- Ensure every non-trivial inference and algebra-heavy manipulation is justified; no large steps may be skipped.\n"
+                    "- Allow well-known theorems (easily found on Wikipedia) only when their hypotheses are satisfied.\n"
+                    "- Penalize claims marked 'trivial' unless the justification is immediate with little reasoning.\n\n"
+                    "Deduction guidance (OPC rubric):\n"
+                    "- 0 points: fully acceptable chunk; at most negligible slips.\n"
+                    "- 1-2 points: minor but noticeable gaps that are easy to repair.\n"
+                    "- 3-4 points: medium issues, missing justification for a substantial step, or repeated smaller mistakes.\n"
+                    "- 5-7 points: severe flaws that invalidate the chunk’s contribution or rely on clearly incorrect reasoning.\n"
+                    "When in doubt, assume the author cannot fill in a skipped or 'trivial' step.\n\n"
+                    "Output instructions:\n"
+                    "1. Provide a concise analysis ending with `\\boxed{correct}` if the chunk deserves 0-2 deductions or `\\boxed{incorrect}` for ≥3 deductions.\n"
+                    "2. On separate lines, append `<deduction>X</deduction>` where X is an integer from 0 to 7, and `<verification>true</verification>` if the chunk earns ≤2 deductions (still acceptable in context) or `<verification>false</verification>` otherwise.\n\n"
                     f"<problem>{problem}</problem>\n\n"
                     f"<full_answer>{strip_think_simple(full_proof)}</full_answer>\n\n"
                     f"<chunk_index>{idx}</chunk_index>\n"
@@ -642,36 +639,49 @@ class VPessimisticVerifier():
             grouped_reviews.append(all_chunk_reviews[cursor:cursor + count])
             cursor += count
 
-        # Aggregate verdicts and collect all errors
+        # Aggregate deductions, derive final OPC score per proof
         evals = []
         final_texts = []
         for reviews in grouped_reviews:
-            has_error = False
-            errors_text = []
-            fallback_text = reviews[0] if reviews else ""
-            for r in reviews:
-                verdict = extract_xml_content(r, "verification")
-                if verdict == "false":
-                    has_error = True
-                    errors_text.append(strip_think_simple(r))
-            if has_error:
-                evals.append(0.0)
-                # Aggregate all error reports into one text block
-                combined = "\n\n".join(errors_text) if errors_text else fallback_text
-                final_texts.append(combined)
-            else:
+            if not reviews:
                 evals.append(1.0)
-                # If no errors, return a constant message instead of first review
                 final_texts.append(self.NO_ERROR_FALLBACK)
+                continue
+
+            chunk_summaries = []
+            total_deduction = 0
+            for idx, r in enumerate(reviews, start=1):
+                deduction_raw = extract_xml_content(r, "deduction")
+                try:
+                    deduction = int(deduction_raw.strip()) if deduction_raw is not None else 0
+                except Exception:
+                    deduction = 0
+                deduction = max(0, min(7, deduction))
+                total_deduction += deduction
+
+                analysis_text = strip_think_simple(r)
+                chunk_summaries.append(
+                    f"- Chunk {idx}: deduction {deduction}/7. {analysis_text}".strip()
+                )
+
+            total_deduction = max(0, min(7, total_deduction))
+            score = 7 - total_deduction
+            is_correct = score >= 5
+            summary_header = f"OPC chunked score: {score}/7 (total deduction {total_deduction})."
+            verification_tag = f"<verification>{'true' if is_correct else 'false'}</verification>"
+            final_report = "\n".join([summary_header, *chunk_summaries, verification_tag]).strip()
+
+            evals.append(1.0 if is_correct else 0.0)
+            final_texts.append(final_report or verification_tag)
 
         return evals, final_texts
 
 class ProgressivePessimisticVerifier():
     """
-    Iteratively applies chunked pessimistic verification with progressively
-    finer granularity. It starts with a full-proof check and then doubles the
-    number of chunks (down to min_chunk_size per chunk) for still-positive
-    samples until either an error is found or max_iters is reached.
+    Iteratively applies OPC-style chunked verification with progressively
+    finer granularity. It starts with coarse chunks (even the whole proof)
+    and keeps subdividing still-credible proofs until either deductions drop
+    the OPC score below 5/7 or we reach the maximum iterations.
     """
     def __init__(self, api_base, api_key, model, max_iters: int = 3, min_chunk_size: int = 6):
         self.client = LLMClient(api_base, api_key, model)
@@ -680,10 +690,9 @@ class ProgressivePessimisticVerifier():
         self.last_review_counts: list[int] = []
 
         self.NO_ERROR_FALLBACK: str = (
-            "<verification>true</verification>\n"
-            "No critical error found in this proof after progressive chunked review. "
+            "OPC progressive score: 7/7 (total deduction 0). "
             "All passes (from coarse to fine) considered the solution correct overall. "
-            "Minor, non-decisive issues may exist but do not undermine correctness."
+            "<verification>true</verification>"
         )
 
     def _split_into_chunks(self, proof: str, chunk_length: int) -> list[str]:
@@ -702,21 +711,25 @@ class ProgressivePessimisticVerifier():
         for idx, chunk in enumerate(chunks, start=1):
             messages_per_chunk.append([
                 {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+                    "You are a meticulous OPC-style math proof grader. Score chunks so that a flawless chunk receives 0 deduction points and increasingly severe issues incur 1-7 points."
                 )},
                 {"role": "user", "content": (
-                    "We provide the original problem and the complete proposed solution for full context. "
-                    "Then we provide a specific chunk from the solution for focused checking. "
-                    "Your task: Check ONLY the given chunk for errors while considering the overall context.\n\n"
+                    "We provide the original problem, the complete proposed proof for context, and a specific chunk to inspect. "
+                    "Judge ONLY the highlighted chunk, but be mindful of previously established facts and assumptions.\n\n"
                     "Checklist:\n"
-                    "1. The chunk’s reasoning and calculations adhere to mathematical correctness.\n"
-                    "2. Any theorems used in the chunk match their hypotheses and conclusions.\n"
-                    "3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.\n\n"
-                    "Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. "
-                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the chunk.\n\n"
+                    "- Verify the chunk genuinely advances the requested conclusion and does not assume unproven statements.\n"
+                    "- Ensure every non-trivial inference and algebra-heavy manipulation is justified; no large steps may be skipped.\n"
+                    "- Allow well-known theorems (easily found on Wikipedia) only when their hypotheses are satisfied.\n"
+                    "- Penalize claims marked 'trivial' unless the justification is immediate with little reasoning.\n\n"
+                    "Deduction guidance (OPC rubric):\n"
+                    "- 0 points: fully acceptable chunk; at most negligible slips.\n"
+                    "- 1-2 points: minor but noticeable gaps that are easy to repair.\n"
+                    "- 3-4 points: medium issues, missing justification for a substantial step, or repeated smaller mistakes.\n"
+                    "- 5-7 points: severe flaws that invalidate the chunk’s contribution or rely on clearly incorrect reasoning.\n"
+                    "When in doubt, assume the author cannot fill in a skipped or 'trivial' step.\n\n"
+                    "Output instructions:\n"
+                    "1. Provide a concise analysis ending with `\\boxed{correct}` if the chunk deserves 0-2 deductions or `\\boxed{incorrect}` for ≥3 deductions.\n"
+                    "2. On separate lines, append `<deduction>X</deduction>` where X is an integer from 0 to 7, and `<verification>true</verification>` if the chunk earns ≤2 deductions or `<verification>false</verification>` otherwise.\n\n"
                     f"<problem>{problem}</problem>\n\n"
                     f"<full_answer>{full_proof}</full_answer>\n\n"
                     f"<chunk_index>{idx}</chunk_index>\n"
@@ -755,10 +768,12 @@ class ProgressivePessimisticVerifier():
             batch_messages = []
             per_item_counts = []
             index_order = []
+            chunk_lengths_for_sample: dict[int, int] = {}
             for idx in pending_indices:
                 problem = problems[idx]
                 proof = proofs[idx]
                 chunk_length = self._chunk_length_for_iteration(proof, iteration)
+                chunk_lengths_for_sample[idx] = chunk_length
                 msgs = self._build_messages_for_one(problem, proof, chunk_length)
                 index_order.append(idx)
                 per_item_counts.append(len(msgs))
@@ -776,22 +791,44 @@ class ProgressivePessimisticVerifier():
                 sample_reviews = chunk_reviews[cursor:cursor + count]
                 cursor += count
 
-                first_error = None
-                for review in sample_reviews:
-                    verdict = extract_xml_content(review, "verification")
-                    if verdict == "false":
-                        first_error = strip_think_simple(review)
-                        break
+                chunk_summaries = []
+                total_deduction = 0
 
-                if first_error:
-                    evals[sample_idx] = 0.0
-                    final_texts[sample_idx] = first_error
+                if not sample_reviews:
+                    chunk_summaries.append("- Chunk 1: deduction 0/7. (no reviewer output)")
                 else:
-                    if iteration == self.max_iters - 1:
-                        evals[sample_idx] = 1.0
-                        final_texts[sample_idx] = self.NO_ERROR_FALLBACK
-                    else:
-                        next_pending.append(sample_idx)
+                    for local_idx, review in enumerate(sample_reviews, start=1):
+                        deduction_raw = extract_xml_content(review, "deduction")
+                        try:
+                            deduction = int(deduction_raw.strip()) if deduction_raw is not None else 0
+                        except Exception:
+                            deduction = 0
+                        deduction = max(0, min(7, deduction))
+                        total_deduction += deduction
+                        analysis_text = strip_think_simple(review)
+                        chunk_summaries.append(
+                            f"- Chunk {local_idx}: deduction {deduction}/7. {analysis_text}".strip()
+                        )
+
+                total_deduction = max(0, min(7, total_deduction))
+                score = 7 - total_deduction
+                is_correct = score >= 5
+
+                chunk_length = chunk_lengths_for_sample.get(sample_idx)
+                chunk_meta = f"(chunk length ≈ {chunk_length} lines)" if chunk_length else ""
+                summary_header = (
+                    f"Iteration {iteration + 1} {chunk_meta}: OPC chunked score {score}/7 "
+                    f"(total deduction {total_deduction})."
+                ).strip()
+                verification_tag = f"<verification>{'true' if is_correct else 'false'}</verification>"
+                report = "\n".join([summary_header, *chunk_summaries, verification_tag]).strip()
+
+                should_finalize = (not is_correct) or (iteration == self.max_iters - 1)
+                if should_finalize:
+                    evals[sample_idx] = 1.0 if is_correct else 0.0
+                    final_texts[sample_idx] = report
+                else:
+                    next_pending.append(sample_idx)
 
             pending_indices = next_pending
 
