@@ -723,7 +723,7 @@ class ProgressivePessimisticVerifier():
                     "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.\n"
                     "- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.\n\n"
                     "Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. "
-                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the chunk.\n\n"
+                    "If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the proof that you found in the chunk.\n\n"
                     f"<problem>{problem}</problem>\n\n"
                     f"<full_answer>{full_proof}</full_answer>\n\n"
                     f"<chunk_index>{idx}</chunk_index>\n"
@@ -783,16 +783,16 @@ class ProgressivePessimisticVerifier():
                 sample_reviews = chunk_reviews[cursor:cursor + count]
                 cursor += count
 
-                first_error = None
-                for review in sample_reviews:
+                chunk_errors: list[str] = []
+                for chunk_id, review in enumerate(sample_reviews, start=1):
                     verdict = extract_xml_content(review, "verification")
                     if verdict == "false":
-                        first_error = strip_think_simple(review)
-                        break
+                        formatted = strip_think_simple(review)
+                        chunk_errors.append(f"[chunk {chunk_id}] {formatted}")
 
-                if first_error:
+                if chunk_errors:
                     evals[sample_idx] = 0.0
-                    final_texts[sample_idx] = first_error
+                    final_texts[sample_idx] = "\n\n".join(chunk_errors)
                 else:
                     if iteration == self.max_iters - 1:
                         evals[sample_idx] = 1.0
