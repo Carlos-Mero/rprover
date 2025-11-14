@@ -4,7 +4,7 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 
 **Key Features**
 - Provers: `naive`, `gprover`, `hprover`, `aceprover`
-- Verifiers: `standard`, `pessimistic`, `vpessimistic`, `pessimistic_judger`, `majority`
+- Verifiers: `standard`, `pessimistic` (also logs majority-vote verdicts), `vpessimistic`, `pessimistic_judger`
 - Reviewer evaluation against a guider model (`--evaluate_reviewer`)
 - Local datasets under `NP_dataset/` and HF datasets
 - Async batch inference with token stats and reproducible logs
@@ -41,8 +41,8 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 - `--proof_model` (`-pm`): prover model name
 - `--eval_model` (`-em`): reviewer/verifier model name
 - `--guider_model` (`-gm`): guidance/ground‑truth model name
-- `--reviewer`: `standard | pessimistic | vpessimistic | pessimistic_judger | majority`
-- `--reviews`: parallel reviews for pessimistic/majority/judger (default 3)
+- `--reviewer`: `standard | pessimistic | vpessimistic | pessimistic_judger`
+- `--reviews`: parallel reviews for pessimistic/judger (default 3). When `--reviewer pessimistic`, the same batch of reviews is also aggregated with majority voting and logged.
 - `--chunk_length`: lines per chunk for `vpessimistic` (default 7)
 - `--evaluate_reviewer`: compare reviewer vs guider; writes metrics and samples
 - `--reasoning_effort`: `minimal | low | medium | high` (passed to compatible models)
@@ -65,8 +65,8 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 
 **Outputs**
 - Each run creates `eval_logs/<UTC-Timestamp>/` containing:
-  - `logs.json`: CLI args, final `accuracy`, token stats (`average_*_tokens`), optional `verifier_evaluation`
-  - `samples.json`: per‑sample problem, proof, evaluation label/text, and token counts
+  - `logs.json`: CLI args, final `accuracy`, token stats (`average_*_tokens`), optional `verifier_evaluation`. When using the pessimistic reviewer, `logs.json` also records `majority_accuracy`.
+  - `samples.json`: per-sample problem, proof, evaluation label/text, and token counts. When `--reviewer pessimistic`, additional `majority_eval`/`majority_verification` fields capture the derived majority-vote verdict without extra API calls.
   - If `--reviewer progressive`: one file per refinement pass named `progressive_iteration_<n>_samples.json` capturing per‑iteration reviews, statuses, and chunk metadata
   - If `--evaluate_reviewer`:
     - `verifier_eval.json`: accuracy, precision, recall, F1 vs guider labels
