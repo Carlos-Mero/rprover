@@ -55,6 +55,85 @@ def get_current_log_path(log_dir: str):
     logdir = Path(log_dir) / ts
     return logdir
 
+def _compute_binary_metrics(preds: list[int | None], targets: list[int]) -> dict:
+    """Compute accuracy/precision/recall/F1 for binary predictions.
+
+    When a prediction is ``None`` it is skipped (useful for unresolved samples).
+    """
+    tp = tn = fp = fn = 0
+    total = 0
+    correct = 0
+    for pred, target in zip(preds, targets):
+        if pred is None:
+            continue
+        gt = int(target)
+        total += 1
+        if pred == gt:
+            correct += 1
+        if pred == 1 and gt == 1:
+            tp += 1
+        elif pred == 0 and gt == 0:
+            tn += 1
+        elif pred == 1 and gt == 0:
+            fp += 1
+        elif pred == 0 and gt == 1:
+            fn += 1
+
+    accuracy = (correct / total) if total else None
+    precision = (tp / (tp + fp)) if (tp + fp) else None
+    recall = (tp / (tp + fn)) if (tp + fn) else None
+    f1 = ((2 * precision * recall / (precision + recall))
+          if (precision is not None and recall is not None and (precision + recall))
+          else None)
+    return {
+        "total": total,
+        "accuracy": accuracy,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+def save_progressive_iteration_samples(
+    logdir: Path,
+    iteration_logs: list[dict],
+    problems: list[str],
+    proofs: list[str],
+    stripped_proofs: list[str],
+    summaries: list[dict] | None = None,
+    costs: list[dict] | None = None,
+):
+    if not iteration_logs:
+        return
+    summary_map = {entry.get("iteration_index"): entry for entry in (summaries or [])}
+    cost_map = {entry.get("iteration_index"): entry for entry in (costs or [])}
+    for entry in iteration_logs:
+        iteration_index = entry.get("iteration_index")
+        samples_payload = []
+        for sample in entry.get("samples", []):
+            sample_idx = sample.get("sample_index")
+            record = dict(sample)
+            if isinstance(sample_idx, int) and 0 <= sample_idx < len(problems):
+                record.update({
+                    "problem": problems[sample_idx],
+                    "proof": proofs[sample_idx],
+                    "stripped_proof": stripped_proofs[sample_idx],
+                })
+            samples_payload.append(record)
+
+        payload = {
+            "iteration_index": iteration_index,
+            "summary": summary_map.get(iteration_index),
+            "cost": cost_map.get(iteration_index),
+            "samples": samples_payload,
+        }
+        out_path = logdir / f"progressive_iteration_{iteration_index}_samples.json"
+        with out_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+
 def _load_jsonl_problems(jsonl_path: Path, content_keys: tuple[str, ...] = ("markdown_statement",)) -> list[str]:
     """Load problems from a JSONL file.
 
@@ -155,7 +234,7 @@ def prepare_dataset(dataset_path):
         ds = load_dataset("csv", data_files=dataset_path)
         ds = ds["train"].select(range(300))
         ds = ds.rename_column("Problem", "problem")
-        ds = ds.rename_column("Solution", "proof")
+        ds = ds.rename_column("Response", "proof")
         gt_evals = [int(e["Points"]) > 6 for e in ds]
         ds = ds.add_column("gt_eval", gt_evals)
     elif dataset_path == "HuggingFaceH4/MATH-500":
@@ -409,6 +488,7 @@ class PessimisticVerifier():
     def __init__(self, api_base, api_key, model, review_times: int = 3):
         self.client = LLMClient(api_base, api_key, model)
         self.review_times = max(1, review_times)
+        self.last_majority_results: tuple[list[float], list[str]] = ([], [])
 
     def _review_messages(self, problems, completions):
         messages = []
@@ -438,6 +518,28 @@ class PessimisticVerifier():
             for _ in range(self.review_times):
                 messages.append(base)
         return messages
+
+    def _majority_vote(self, reviews, verdicts):
+        positives = sum(1 for v in verdicts if v == "true")
+        negatives = sum(1 for v in verdicts if v == "false")
+
+        if positives > negatives:
+            target_verdict = "true"
+        elif negatives > positives:
+            target_verdict = "false"
+        else:
+            # Tie: randomly select one review as the final result
+            if reviews:
+                chosen = random.choice(reviews)
+                return extract_xml_content(chosen, "verification") == "true", chosen
+            return False, ""
+
+        for review, verdict in zip(reviews, verdicts):
+            if verdict == target_verdict:
+                return target_verdict == "true", review
+
+        # Fallback if no matching verdict found (should not happen)
+        return (target_verdict == "true"), (reviews[0] if reviews else "")
 
     def __call__(self, problems, completions, **kwargs):
         # Only perform parallel reviews and take the first error as verdict
@@ -448,113 +550,29 @@ class PessimisticVerifier():
 
         final_reviews = []
         rewards = []
+        majority_reviews = []
+        majority_rewards = []
         for reviews in grouped:
-            # find first negative review
+            verdicts = [extract_xml_content(r, "verification") for r in reviews]
+
+            # find first negative review for pessimistic verdict
             first_negative = None
-            for r in reviews:
-                if extract_xml_content(r, "verification") == "false":
-                    first_negative = r
+            for review, verdict in zip(reviews, verdicts):
+                if verdict == "false":
+                    first_negative = review
                     break
             if first_negative is not None:
                 rewards.append(0.0)
                 final_reviews.append(first_negative)
             else:
                 rewards.append(1.0)
-                # fallback: take the first positive review's content
                 final_reviews.append(reviews[0] if reviews else "")
 
-        return rewards, final_reviews
+            majority_true, majority_review = self._majority_vote(reviews, verdicts)
+            majority_rewards.append(1.0 if majority_true else 0.0)
+            majority_reviews.append(majority_review)
 
-class MajorityVotingVerifier():
-    """
-    Runs multiple parallel reviews using the same checklist as Verifier.
-
-    Chooses the majority verdict among the reviews as the final decision.
-    Returns the first review whose verdict matches the majority as the response.
-    Tie policy: randomly select one of the reviews and adopt its verdict and
-    text as the final result.
-    """
-    def __init__(self, api_base, api_key, model, review_times: int = 3):
-        self.client = LLMClient(api_base, api_key, model)
-        self.review_times = max(1, review_times)
-
-    def _review_messages(self, problems, completions):
-        messages = []
-        for (p, c) in zip(problems, completions):
-            answer = strip_think_simple(c if isinstance(c, str) else c[0]['content'])
-            base = [
-                {"role": "system", "content": (
-                    "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
-                )},
-                {"role": "user", "content": (
-                    "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
-                    "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
-                    "2. The solution actually derives the conclusion required by the original problem.\n"
-                    "3. Every step of calculation and formula derivation in the solution is correct.\n"
-                    "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
-                    "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
-                    "Consistency and error-severity policy (important):\n"
-                    "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
-                    "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
-                    "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
-                    " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
-                    " Do not include any restatement of the entire solution or problem.\n\n"
-                    f"<problem>{p}</problem>\n\n"
-                    f"<answer>{answer}</answer>"
-                )}
-            ]
-            for _ in range(self.review_times):
-                messages.append(base)
-        return messages
-
-    def __call__(self, problems, completions, **kwargs):
-        review_messages = self._review_messages(problems, completions)
-        all_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(review_messages, **kwargs))
-        k = self.review_times
-        grouped = [all_reviews[i * k:(i + 1) * k] for i in range(len(problems))]
-
-        final_reviews = []
-        rewards = []
-        for reviews in grouped:
-            # Count verdicts
-            positives = 0
-            negatives = 0
-            for r in reviews:
-                verdict = extract_xml_content(r, "verification")
-                if verdict == "true":
-                    positives += 1
-                else:
-                    negatives += 1
-
-            # Determine majority verdict; if tie, randomly choose a review
-            if positives > negatives:
-                majority_verdict_true = True
-                # Pick the first review that matches the majority verdict
-                chosen = None
-                for r in reviews:
-                    if extract_xml_content(r, "verification") == "true":
-                        chosen = r
-                        break
-                chosen = chosen or (reviews[0] if reviews else "")
-            elif negatives > positives:
-                majority_verdict_true = False
-                chosen = None
-                for r in reviews:
-                    if extract_xml_content(r, "verification") == "false":
-                        chosen = r
-                        break
-                chosen = chosen or (reviews[0] if reviews else "")
-            else:
-                # Tie: randomly select one review as the final result
-                if reviews:
-                    chosen = random.choice(reviews)
-                    majority_verdict_true = extract_xml_content(chosen, "verification") == "true"
-                else:
-                    chosen = ""
-                    majority_verdict_true = False
-
-            rewards.append(1.0 if majority_verdict_true else 0.0)
-            final_reviews.append(chosen)
+        self.last_majority_results = (majority_rewards, majority_reviews)
 
         return rewards, final_reviews
 
@@ -685,6 +703,12 @@ class ProgressivePessimisticVerifier():
         self.max_iters = max(1, int(max_iters))
         self.min_chunk_size = max(1, int(min_chunk_size))
         self.last_review_counts: list[int] = []
+        self.iteration_samples_log: list[dict] = []
+        self.iteration_summary: list[dict] = []
+        self.iteration_prediction_history: list[list[int]] = []
+        self.iteration_resolved_predictions: list[list[int | None]] = []
+        self.iteration_pending_masks: list[list[bool]] = []
+        self.iteration_review_costs: list[dict] = []
 
         self.NO_ERROR_FALLBACK: str = (
             "<verification>true</verification>\n"
@@ -747,6 +771,12 @@ class ProgressivePessimisticVerifier():
         total = len(problems)
         if total == 0:
             self.last_review_counts = []
+            self.iteration_samples_log = []
+            self.iteration_summary = []
+            self.iteration_prediction_history = []
+            self.iteration_resolved_predictions = []
+            self.iteration_pending_masks = []
+            self.iteration_review_costs = []
             return [], []
 
         proofs = [strip_think_simple(c if isinstance(c, str) else c[0]['content']) for c in completions]
@@ -754,21 +784,38 @@ class ProgressivePessimisticVerifier():
         final_texts = [""] * total
         pending_indices = list(range(total))
         total_review_counts = [0] * total
+        self.iteration_samples_log = []
+        self.iteration_summary = []
+        self.iteration_prediction_history = []
+        self.iteration_resolved_predictions = []
+        self.iteration_pending_masks = []
+        self.iteration_review_costs = []
+        sample_states = [
+            {
+                "status": "pending",
+                "resolved_iteration": None,
+                "final_text": ""
+            }
+            for _ in range(total)
+        ]
+        cumulative_reviews = 0
 
         for iteration in range(self.max_iters):
             if not pending_indices:
                 break
 
             batch_messages = []
-            per_item_counts = []
-            index_order = []
+            iteration_batch_info: list[dict] = []
             for idx in pending_indices:
                 problem = problems[idx]
                 proof = proofs[idx]
                 chunk_length = self._chunk_length_for_iteration(proof, iteration)
                 msgs = self._build_messages_for_one(problem, proof, chunk_length)
-                index_order.append(idx)
-                per_item_counts.append(len(msgs))
+                iteration_batch_info.append({
+                    "sample_index": idx,
+                    "chunk_length": chunk_length,
+                    "num_chunks": len(msgs)
+                })
                 total_review_counts[idx] += len(msgs)
                 batch_messages.extend(msgs)
 
@@ -779,9 +826,19 @@ class ProgressivePessimisticVerifier():
 
             cursor = 0
             next_pending = []
-            for sample_idx, count in zip(index_order, per_item_counts):
+            iteration_samples = []
+            failed_this_iter = 0
+            passed_this_iter = 0
+            chunk_lengths_this_iter = []
+            reviews_this_iter = 0
+
+            for info in iteration_batch_info:
+                sample_idx = info["sample_index"]
+                count = info["num_chunks"]
                 sample_reviews = chunk_reviews[cursor:cursor + count]
                 cursor += count
+                reviews_this_iter += count
+                chunk_lengths_this_iter.append(info["chunk_length"])
 
                 chunk_errors: list[str] = []
                 for chunk_id, review in enumerate(sample_reviews, start=1):
@@ -792,27 +849,105 @@ class ProgressivePessimisticVerifier():
 
                 if chunk_errors:
                     evals[sample_idx] = 0.0
-                    final_texts[sample_idx] = "\n\n".join(chunk_errors)
+                    combined_errors = "\n\n".join(chunk_errors)
+                    final_texts[sample_idx] = combined_errors
+                    sample_states[sample_idx].update({
+                        "status": "failed",
+                        "resolved_iteration": iteration + 1,
+                        "final_text": combined_errors,
+                    })
+                    status_label = "failed"
+                    status_eval = 0.0
+                    failed_this_iter += 1
                 else:
                     if iteration == self.max_iters - 1:
                         evals[sample_idx] = 1.0
                         final_texts[sample_idx] = self.NO_ERROR_FALLBACK
+                        sample_states[sample_idx].update({
+                            "status": "passed",
+                            "resolved_iteration": iteration + 1,
+                            "final_text": self.NO_ERROR_FALLBACK,
+                        })
+                        status_label = "passed"
+                        status_eval = 1.0
+                        passed_this_iter += 1
                     else:
                         next_pending.append(sample_idx)
+                        status_label = "pending"
+                        status_eval = None
+
+                iteration_samples.append({
+                    "sample_index": sample_idx,
+                    "status": status_label,
+                    "eval": status_eval,
+                    "verification": final_texts[sample_idx] if status_eval is not None else None,
+                    "chunk_length": info["chunk_length"],
+                    "num_chunks": info["num_chunks"],
+                    "chunk_reviews": sample_reviews,
+                    "chunk_errors": chunk_errors,
+                })
 
             pending_indices = next_pending
+
+            chunk_length_stats = {}
+            if chunk_lengths_this_iter:
+                chunk_length_stats = {
+                    "min": min(chunk_lengths_this_iter),
+                    "max": max(chunk_lengths_this_iter),
+                    "mean": sum(chunk_lengths_this_iter) / len(chunk_lengths_this_iter),
+                }
+            cumulative_reviews += reviews_this_iter
+
+            statuses = [state["status"] for state in sample_states]
+            preds_if_stop = [0 if status == "failed" else 1 for status in statuses]
+            resolved_preds = [
+                0 if status == "failed" else 1 if status == "passed" else None
+                for status in statuses
+            ]
+            pending_mask = [status == "pending" for status in statuses]
+
+            self.iteration_samples_log.append({
+                "iteration_index": iteration + 1,
+                "samples": iteration_samples,
+            })
+            self.iteration_summary.append({
+                "iteration_index": iteration + 1,
+                "reviewed_samples": len(iteration_batch_info),
+                "failed_this_iter": failed_this_iter,
+                "passed_this_iter": passed_this_iter,
+                "pending_after_iteration": len(next_pending),
+                "chunk_length_stats": chunk_length_stats,
+            })
+            self.iteration_prediction_history.append(preds_if_stop)
+            self.iteration_resolved_predictions.append(resolved_preds)
+            self.iteration_pending_masks.append(pending_mask)
+            self.iteration_review_costs.append({
+                "iteration_index": iteration + 1,
+                "reviews_this_iter": reviews_this_iter,
+                "cumulative_reviews": cumulative_reviews,
+            })
 
         # Any remaining samples (e.g., no further iterations but never failed) are treated as passes.
         for idx in pending_indices:
             if evals[idx] is None:
                 evals[idx] = 1.0
                 final_texts[idx] = self.NO_ERROR_FALLBACK
+                sample_states[idx].update({
+                    "status": "passed",
+                    "resolved_iteration": self.max_iters,
+                    "final_text": self.NO_ERROR_FALLBACK,
+                })
 
         # For any sample that never received a review (e.g., empty proof), ensure defaults.
         for i, value in enumerate(evals):
             if value is None:
                 evals[i] = 1.0
                 final_texts[i] = self.NO_ERROR_FALLBACK
+                sample_states[i].update({
+                    "status": "passed",
+                    "resolved_iteration": self.max_iters,
+                    "final_text": self.NO_ERROR_FALLBACK,
+                })
 
         self.last_review_counts = total_review_counts
         return evals, final_texts
@@ -845,8 +980,8 @@ def main():
     parser.add_argument("--log_dir", help="the logging directory path", default="eval_logs")
     parser.add_argument("--reasoning_effort", help="the reasoning_effort parameter for some models", default="medium", choices=["minimal", "low", "medium", "high"])
     parser.add_argument("--method", default="naive", choices=["naive"], help="the training / evaluation method switch")
-    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "majority", "progressive"], help="the reviewer used for evaluation")
-    parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for multi-review verifiers (pessimistic/majority)")
+    parser.add_argument("--reviewer", default="standard", choices=["standard", "pessimistic", "pessimistic_judger", "vpessimistic", "progressive"], help="the reviewer used for evaluation")
+    parser.add_argument("--reviews", type=int, default=3, help="number of parallel reviews for multi-review verifiers (pessimistic/judger)")
     parser.add_argument("--chunk_length", type=int, default=7, help="lines per chunk for vpessimistic reviewer")
     parser.add_argument("--progressive_max_iters", type=int, default=3, help="maximum refinement passes for progressive reviewer")
     parser.add_argument("--progressive_min_chunk_size", type=int, default=6, help="minimum lines per chunk for progressive reviewer")
@@ -933,11 +1068,8 @@ def main():
         logger.info("successfully collected %d proofs from %s", len(proofs), args.proof_model)
 
     if args.reviewer == "pessimistic":
-        # Use the new PessimisticVerifier (first error wins)
+        # Use the new PessimisticVerifier (first error wins, also records majority vote)
         evaluator = PessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
-    elif args.reviewer == "majority":
-        # Majority voting over multiple reviews
-        evaluator = MajorityVotingVerifier(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
     elif args.reviewer == "vpessimistic":
         # Chunked pessimistic verifier (focus per-chunk)
         evaluator = VPessimisticVerifier(eval_base_url, eval_api_key, args.eval_model, chunk_length=args.chunk_length)
@@ -964,6 +1096,21 @@ def main():
     accuracy = sum(evals) / len(evals)
     logger.info(f"Obtained final accuracy: {accuracy}")
 
+    majority_evals = None
+    majority_verifications = None
+    majority_accuracy = None
+    if args.reviewer == "pessimistic":
+        majority_results = getattr(evaluator, "last_majority_results", None)
+        if majority_results:
+            majority_evals, majority_verifications = majority_results
+            if len(majority_evals) == len(evals) and len(evals) > 0:
+                majority_accuracy = sum(majority_evals) / len(majority_evals)
+                logger.info(f"Majority voting accuracy from the same reviews: {majority_accuracy}")
+            else:
+                majority_evals = None
+                majority_verifications = None
+
+
     # Optional: evaluate the reviewer against the guider model as ground truth
     if args.evaluate_reviewer:
         logger.info("Evaluating reviewer against guider model as ground truth")
@@ -988,32 +1135,60 @@ def main():
 
         preds = [int(x) for x in evals]
         gts = [int(x) for x in gt_labels]
-        total = len(preds)
-        correct = sum(1 for p, g in zip(preds, gts) if p == g)
-        tp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 1)
-        tn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 0)
-        fp = sum(1 for p, g in zip(preds, gts) if p == 1 and g == 0)
-        fn = sum(1 for p, g in zip(preds, gts) if p == 0 and g == 1)
-        verifier_accuracy = correct / total if total else 0.0
-        precision = tp / (tp + fp) if (tp + fp) else None
-        recall = tp / (tp + fn) if (tp + fn) else None
-        f1 = (2 * precision * recall / (precision + recall)) if (precision and recall and (precision + recall)) else None
+        verifier_eval = _compute_binary_metrics(preds, gts)
 
-        verifier_eval = {
-            "total": total,
-            "accuracy": verifier_accuracy,
-            "tp": tp,
-            "tn": tn,
-            "fp": fp,
-            "fn": fn,
-            "precision": precision,
-            "recall": recall,
-            "f1": f1,
-        }
+        if args.reviewer == "pessimistic" and majority_evals and len(majority_evals) == len(preds):
+            majority_preds = [int(x) for x in majority_evals]
+            verifier_eval["majority_vote_metrics"] = _compute_binary_metrics(majority_preds, gts)
+
+        progressive_iter_metrics = None
+        if args.reviewer == "progressive":
+            pred_history = getattr(evaluator, "iteration_prediction_history", [])
+            if pred_history:
+                resolved_history = getattr(evaluator, "iteration_resolved_predictions", [])
+                pending_masks = getattr(evaluator, "iteration_pending_masks", [])
+                review_costs = getattr(evaluator, "iteration_review_costs", [])
+                progressive_iter_metrics = []
+                total_samples = len(gts)
+                for idx, preds_if_stop in enumerate(pred_history):
+                    iteration_index = idx + 1
+                    metrics_if_stop = _compute_binary_metrics(preds_if_stop, gts)
+                    resolved_preds = resolved_history[idx] if idx < len(resolved_history) else [None] * total_samples
+                    resolved_metrics = _compute_binary_metrics(resolved_preds, gts)
+                    pending_mask = pending_masks[idx] if idx < len(pending_masks) else [False] * total_samples
+                    pending_samples = sum(1 for flag in pending_mask if flag)
+                    cost_info = review_costs[idx] if idx < len(review_costs) else {}
+                    progressive_iter_metrics.append({
+                        "iteration_index": iteration_index,
+                        "metrics_if_stopped": metrics_if_stop,
+                        "resolved_metrics": resolved_metrics,
+                        "pending_samples": pending_samples,
+                        "resolved_samples": total_samples - pending_samples,
+                        "reviews_this_iter": cost_info.get("reviews_this_iter"),
+                        "cumulative_reviews": cost_info.get("cumulative_reviews"),
+                    })
+                if progressive_iter_metrics:
+                    verifier_eval["progressive_iteration_metrics"] = progressive_iter_metrics
 
         # Save sample-level comparison
-        verifier_samples = [
-            {
+        majority_sample_fields = None
+        if (
+            args.reviewer == "pessimistic"
+            and majority_evals
+            and majority_verifications
+            and len(majority_evals) == len(gts)
+            and len(majority_verifications) == len(gts)
+        ):
+            majority_sample_fields = list(zip(
+                [bool(int(x)) for x in majority_evals],
+                majority_verifications,
+            ))
+
+        verifier_samples = []
+        for idx, (problem, proof, pred, pred_text, gt, gt_text) in enumerate(
+            zip(problems, proofs, preds, verifications, gts, gt_texts)
+        ):
+            sample_entry = {
                 "problem": problem,
                 "proof": proof,
                 "pred_label": bool(pred),
@@ -1021,13 +1196,17 @@ def main():
                 "gt_label": bool(gt),
                 "gt_text": gt_text,
             }
-            for (problem, proof, pred, pred_text, gt, gt_text) in zip(
-                problems, proofs, preds, verifications, gts, gt_texts
-            )
-        ]
+            if majority_sample_fields:
+                maj_label, maj_text = majority_sample_fields[idx]
+                sample_entry["majority_pred_label"] = maj_label
+                sample_entry["majority_pred_text"] = maj_text
+            verifier_samples.append(sample_entry)
 
         with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
             json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
+        if progressive_iter_metrics:
+            with open(logdir / "verifier_eval_progressive_iterations.json", "w", encoding="utf-8") as f:
+                json.dump(progressive_iter_metrics, f, ensure_ascii=False, indent=2, default=str)
         with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
             json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
 
@@ -1040,6 +1219,8 @@ def main():
     logger.info("evaluation ended")
     vars_dict = vars(args)
     vars_dict["accuracy"] = accuracy
+    if majority_accuracy is not None:
+        vars_dict["majority_accuracy"] = majority_accuracy
     # Reviewer cost metrics for post-hoc cost/performance analysis
     reviewer_cost = {"reviewer": args.reviewer}
     num_samples = len(problems)
@@ -1059,7 +1240,7 @@ def main():
     else:
         if args.reviewer == "standard":
             per_sample = 1
-        elif args.reviewer in {"pessimistic", "majority"}:
+        elif args.reviewer == "pessimistic":
             per_sample = int(args.reviews)
         elif args.reviewer == "pessimistic_judger":
             per_sample = int(args.reviews) + 1  # k reviews + 1 final judger
@@ -1131,12 +1312,27 @@ def main():
             problems, proofs, evals, verifications, prover_inp_tokens, prover_comp_tokens
         )
     ]
+    if majority_evals and majority_verifications and len(samples) == len(majority_evals):
+        for sample, maj_eval, maj_verification in zip(samples, majority_evals, majority_verifications):
+            sample["majority_eval"] = maj_eval
+            sample["majority_verification"] = maj_verification
     # if exps is not None:
     #     for s, exp in zip(samples, exps):
     #         s["exp"] = exp
 
     with open(logdir / "samples.json", "w", encoding="utf-8") as f:
         json.dump(samples, f, ensure_ascii=False, indent=2, default=str)
+
+    if args.reviewer == "progressive":
+        save_progressive_iteration_samples(
+            logdir,
+            getattr(evaluator, "iteration_samples_log", []),
+            problems,
+            proofs,
+            striped_proofs,
+            getattr(evaluator, "iteration_summary", []),
+            getattr(evaluator, "iteration_review_costs", []),
+        )
     logger.info(f"successfully saved logs to path {logdir}")
 
 if __name__ == "__main__":
