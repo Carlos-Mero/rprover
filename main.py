@@ -55,6 +55,85 @@ def get_current_log_path(log_dir: str):
     logdir = Path(log_dir) / ts
     return logdir
 
+def _compute_binary_metrics(preds: list[int | None], targets: list[int]) -> dict:
+    """Compute accuracy/precision/recall/F1 for binary predictions.
+
+    When a prediction is ``None`` it is skipped (useful for unresolved samples).
+    """
+    tp = tn = fp = fn = 0
+    total = 0
+    correct = 0
+    for pred, target in zip(preds, targets):
+        if pred is None:
+            continue
+        gt = int(target)
+        total += 1
+        if pred == gt:
+            correct += 1
+        if pred == 1 and gt == 1:
+            tp += 1
+        elif pred == 0 and gt == 0:
+            tn += 1
+        elif pred == 1 and gt == 0:
+            fp += 1
+        elif pred == 0 and gt == 1:
+            fn += 1
+
+    accuracy = (correct / total) if total else None
+    precision = (tp / (tp + fp)) if (tp + fp) else None
+    recall = (tp / (tp + fn)) if (tp + fn) else None
+    f1 = ((2 * precision * recall / (precision + recall))
+          if (precision is not None and recall is not None and (precision + recall))
+          else None)
+    return {
+        "total": total,
+        "accuracy": accuracy,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+    }
+
+def save_progressive_iteration_samples(
+    logdir: Path,
+    iteration_logs: list[dict],
+    problems: list[str],
+    proofs: list[str],
+    stripped_proofs: list[str],
+    summaries: list[dict] | None = None,
+    costs: list[dict] | None = None,
+):
+    if not iteration_logs:
+        return
+    summary_map = {entry.get("iteration_index"): entry for entry in (summaries or [])}
+    cost_map = {entry.get("iteration_index"): entry for entry in (costs or [])}
+    for entry in iteration_logs:
+        iteration_index = entry.get("iteration_index")
+        samples_payload = []
+        for sample in entry.get("samples", []):
+            sample_idx = sample.get("sample_index")
+            record = dict(sample)
+            if isinstance(sample_idx, int) and 0 <= sample_idx < len(problems):
+                record.update({
+                    "problem": problems[sample_idx],
+                    "proof": proofs[sample_idx],
+                    "stripped_proof": stripped_proofs[sample_idx],
+                })
+            samples_payload.append(record)
+
+        payload = {
+            "iteration_index": iteration_index,
+            "summary": summary_map.get(iteration_index),
+            "cost": cost_map.get(iteration_index),
+            "samples": samples_payload,
+        }
+        out_path = logdir / f"progressive_iteration_{iteration_index}_samples.json"
+        with out_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+
 def _load_jsonl_problems(jsonl_path: Path, content_keys: tuple[str, ...] = ("markdown_statement",)) -> list[str]:
     """Load problems from a JSONL file.
 
@@ -685,6 +764,12 @@ class ProgressivePessimisticVerifier():
         self.max_iters = max(1, int(max_iters))
         self.min_chunk_size = max(1, int(min_chunk_size))
         self.last_review_counts: list[int] = []
+        self.iteration_samples_log: list[dict] = []
+        self.iteration_summary: list[dict] = []
+        self.iteration_prediction_history: list[list[int]] = []
+        self.iteration_resolved_predictions: list[list[int | None]] = []
+        self.iteration_pending_masks: list[list[bool]] = []
+        self.iteration_review_costs: list[dict] = []
 
         self.NO_ERROR_FALLBACK: str = (
             "<verification>true</verification>\n"
@@ -747,6 +832,12 @@ class ProgressivePessimisticVerifier():
         total = len(problems)
         if total == 0:
             self.last_review_counts = []
+            self.iteration_samples_log = []
+            self.iteration_summary = []
+            self.iteration_prediction_history = []
+            self.iteration_resolved_predictions = []
+            self.iteration_pending_masks = []
+            self.iteration_review_costs = []
             return [], []
 
         proofs = [strip_think_simple(c if isinstance(c, str) else c[0]['content']) for c in completions]
@@ -754,21 +845,38 @@ class ProgressivePessimisticVerifier():
         final_texts = [""] * total
         pending_indices = list(range(total))
         total_review_counts = [0] * total
+        self.iteration_samples_log = []
+        self.iteration_summary = []
+        self.iteration_prediction_history = []
+        self.iteration_resolved_predictions = []
+        self.iteration_pending_masks = []
+        self.iteration_review_costs = []
+        sample_states = [
+            {
+                "status": "pending",
+                "resolved_iteration": None,
+                "final_text": ""
+            }
+            for _ in range(total)
+        ]
+        cumulative_reviews = 0
 
         for iteration in range(self.max_iters):
             if not pending_indices:
                 break
 
             batch_messages = []
-            per_item_counts = []
-            index_order = []
+            iteration_batch_info: list[dict] = []
             for idx in pending_indices:
                 problem = problems[idx]
                 proof = proofs[idx]
                 chunk_length = self._chunk_length_for_iteration(proof, iteration)
                 msgs = self._build_messages_for_one(problem, proof, chunk_length)
-                index_order.append(idx)
-                per_item_counts.append(len(msgs))
+                iteration_batch_info.append({
+                    "sample_index": idx,
+                    "chunk_length": chunk_length,
+                    "num_chunks": len(msgs)
+                })
                 total_review_counts[idx] += len(msgs)
                 batch_messages.extend(msgs)
 
@@ -779,9 +887,19 @@ class ProgressivePessimisticVerifier():
 
             cursor = 0
             next_pending = []
-            for sample_idx, count in zip(index_order, per_item_counts):
+            iteration_samples = []
+            failed_this_iter = 0
+            passed_this_iter = 0
+            chunk_lengths_this_iter = []
+            reviews_this_iter = 0
+
+            for info in iteration_batch_info:
+                sample_idx = info["sample_index"]
+                count = info["num_chunks"]
                 sample_reviews = chunk_reviews[cursor:cursor + count]
                 cursor += count
+                reviews_this_iter += count
+                chunk_lengths_this_iter.append(info["chunk_length"])
 
                 chunk_errors: list[str] = []
                 for chunk_id, review in enumerate(sample_reviews, start=1):
@@ -792,27 +910,105 @@ class ProgressivePessimisticVerifier():
 
                 if chunk_errors:
                     evals[sample_idx] = 0.0
-                    final_texts[sample_idx] = "\n\n".join(chunk_errors)
+                    combined_errors = "\n\n".join(chunk_errors)
+                    final_texts[sample_idx] = combined_errors
+                    sample_states[sample_idx].update({
+                        "status": "failed",
+                        "resolved_iteration": iteration + 1,
+                        "final_text": combined_errors,
+                    })
+                    status_label = "failed"
+                    status_eval = 0.0
+                    failed_this_iter += 1
                 else:
                     if iteration == self.max_iters - 1:
                         evals[sample_idx] = 1.0
                         final_texts[sample_idx] = self.NO_ERROR_FALLBACK
+                        sample_states[sample_idx].update({
+                            "status": "passed",
+                            "resolved_iteration": iteration + 1,
+                            "final_text": self.NO_ERROR_FALLBACK,
+                        })
+                        status_label = "passed"
+                        status_eval = 1.0
+                        passed_this_iter += 1
                     else:
                         next_pending.append(sample_idx)
+                        status_label = "pending"
+                        status_eval = None
+
+                iteration_samples.append({
+                    "sample_index": sample_idx,
+                    "status": status_label,
+                    "eval": status_eval,
+                    "verification": final_texts[sample_idx] if status_eval is not None else None,
+                    "chunk_length": info["chunk_length"],
+                    "num_chunks": info["num_chunks"],
+                    "chunk_reviews": sample_reviews,
+                    "chunk_errors": chunk_errors,
+                })
 
             pending_indices = next_pending
+
+            chunk_length_stats = {}
+            if chunk_lengths_this_iter:
+                chunk_length_stats = {
+                    "min": min(chunk_lengths_this_iter),
+                    "max": max(chunk_lengths_this_iter),
+                    "mean": sum(chunk_lengths_this_iter) / len(chunk_lengths_this_iter),
+                }
+            cumulative_reviews += reviews_this_iter
+
+            statuses = [state["status"] for state in sample_states]
+            preds_if_stop = [0 if status == "failed" else 1 for status in statuses]
+            resolved_preds = [
+                0 if status == "failed" else 1 if status == "passed" else None
+                for status in statuses
+            ]
+            pending_mask = [status == "pending" for status in statuses]
+
+            self.iteration_samples_log.append({
+                "iteration_index": iteration + 1,
+                "samples": iteration_samples,
+            })
+            self.iteration_summary.append({
+                "iteration_index": iteration + 1,
+                "reviewed_samples": len(iteration_batch_info),
+                "failed_this_iter": failed_this_iter,
+                "passed_this_iter": passed_this_iter,
+                "pending_after_iteration": len(next_pending),
+                "chunk_length_stats": chunk_length_stats,
+            })
+            self.iteration_prediction_history.append(preds_if_stop)
+            self.iteration_resolved_predictions.append(resolved_preds)
+            self.iteration_pending_masks.append(pending_mask)
+            self.iteration_review_costs.append({
+                "iteration_index": iteration + 1,
+                "reviews_this_iter": reviews_this_iter,
+                "cumulative_reviews": cumulative_reviews,
+            })
 
         # Any remaining samples (e.g., no further iterations but never failed) are treated as passes.
         for idx in pending_indices:
             if evals[idx] is None:
                 evals[idx] = 1.0
                 final_texts[idx] = self.NO_ERROR_FALLBACK
+                sample_states[idx].update({
+                    "status": "passed",
+                    "resolved_iteration": self.max_iters,
+                    "final_text": self.NO_ERROR_FALLBACK,
+                })
 
         # For any sample that never received a review (e.g., empty proof), ensure defaults.
         for i, value in enumerate(evals):
             if value is None:
                 evals[i] = 1.0
                 final_texts[i] = self.NO_ERROR_FALLBACK
+                sample_states[i].update({
+                    "status": "passed",
+                    "resolved_iteration": self.max_iters,
+                    "final_text": self.NO_ERROR_FALLBACK,
+                })
 
         self.last_review_counts = total_review_counts
         return evals, final_texts
@@ -1011,6 +1207,35 @@ def main():
             "f1": f1,
         }
 
+        progressive_iter_metrics = None
+        if args.reviewer == "progressive":
+            pred_history = getattr(evaluator, "iteration_prediction_history", [])
+            if pred_history:
+                resolved_history = getattr(evaluator, "iteration_resolved_predictions", [])
+                pending_masks = getattr(evaluator, "iteration_pending_masks", [])
+                review_costs = getattr(evaluator, "iteration_review_costs", [])
+                progressive_iter_metrics = []
+                total_samples = len(gts)
+                for idx, preds_if_stop in enumerate(pred_history):
+                    iteration_index = idx + 1
+                    metrics_if_stop = _compute_binary_metrics(preds_if_stop, gts)
+                    resolved_preds = resolved_history[idx] if idx < len(resolved_history) else [None] * total_samples
+                    resolved_metrics = _compute_binary_metrics(resolved_preds, gts)
+                    pending_mask = pending_masks[idx] if idx < len(pending_masks) else [False] * total_samples
+                    pending_samples = sum(1 for flag in pending_mask if flag)
+                    cost_info = review_costs[idx] if idx < len(review_costs) else {}
+                    progressive_iter_metrics.append({
+                        "iteration_index": iteration_index,
+                        "metrics_if_stopped": metrics_if_stop,
+                        "resolved_metrics": resolved_metrics,
+                        "pending_samples": pending_samples,
+                        "resolved_samples": total_samples - pending_samples,
+                        "reviews_this_iter": cost_info.get("reviews_this_iter"),
+                        "cumulative_reviews": cost_info.get("cumulative_reviews"),
+                    })
+                if progressive_iter_metrics:
+                    verifier_eval["progressive_iteration_metrics"] = progressive_iter_metrics
+
         # Save sample-level comparison
         verifier_samples = [
             {
@@ -1028,6 +1253,9 @@ def main():
 
         with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
             json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
+        if progressive_iter_metrics:
+            with open(logdir / "verifier_eval_progressive_iterations.json", "w", encoding="utf-8") as f:
+                json.dump(progressive_iter_metrics, f, ensure_ascii=False, indent=2, default=str)
         with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
             json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
 
@@ -1137,6 +1365,17 @@ def main():
 
     with open(logdir / "samples.json", "w", encoding="utf-8") as f:
         json.dump(samples, f, ensure_ascii=False, indent=2, default=str)
+
+    if args.reviewer == "progressive":
+        save_progressive_iteration_samples(
+            logdir,
+            getattr(evaluator, "iteration_samples_log", []),
+            problems,
+            proofs,
+            striped_proofs,
+            getattr(evaluator, "iteration_summary", []),
+            getattr(evaluator, "iteration_review_costs", []),
+        )
     logger.info(f"successfully saved logs to path {logdir}")
 
 if __name__ == "__main__":

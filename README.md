@@ -67,9 +67,11 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 - Each run creates `eval_logs/<UTC-Timestamp>/` containing:
   - `logs.json`: CLI args, final `accuracy`, token stats (`average_*_tokens`), optional `verifier_evaluation`
   - `samples.json`: per‑sample problem, proof, evaluation label/text, and token counts
+  - If `--reviewer progressive`: one file per refinement pass named `progressive_iteration_<n>_samples.json` capturing per‑iteration reviews, statuses, and chunk metadata
   - If `--evaluate_reviewer`:
     - `verifier_eval.json`: accuracy, precision, recall, F1 vs guider labels
     - `verifier_samples.json`: per‑sample comparison of reviewer vs guider
+    - If the reviewer is `progressive`, `verifier_eval_progressive_iterations.json` adds accuracy/cost curves after each iteration (and the same data is embedded in `verifier_eval.json` under `progressive_iteration_metrics`)
 
 **Reusing Proofs / Ground Truth**
 - Use `--verifier_samples` to skip new proof generation and reuse prior problems/proofs and GT labels/texts:
