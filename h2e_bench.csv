@@ -1,37 +1,37 @@
-model, method, TP, TN, FP, FN, TNR, total_reviews, avg_inp_tokens, avg_opt_tokens, note
-gpt-5-mini-medium, standard, 40, 104, 54, 2, 0.66, 200, 2422.05, 2592.42,
-gpt-5-mini-medium, pes@3, 39, 115, 43, 3, 0.73, 900, 2422.05, 2596.73, 
-gpt-5-mini-medium, vp@16, 37, 117, 41, 5, 0.74, 721, 4237.08, 1595.26,
-gpt-5-mini-medium, progressive@3/6, 39, 129, 29, 3, 0.82, 662, , ,
-gpt-5-medium, standard, 40, 134, 24, 2, 0.85, 200, 2422.05, 4999.8,
-gpt-5-medium, pes@3,
-gpt-5-medium, vp@16,
-gpt-5-medium, progressive@3/6, 37, 148, 10, 5, 0.94, 513, , ,
-gpt-5-high, standard,
-gpt-5-high, pes@3,
-gpt-5-high, vp@16,
-gpt-5-high, progressive@3/6, 34, 146, 12, 8, 0.92, 505, , ,
-deepseek-v3.2-thinking, standard, 40, 117, 41, 2, 0.74, 200, 2333.55, 6391.59,
-deepseek-v3.2-thinking, progressive@3/6, 34, 137, 21, 8, 0.87, 609, 2616.59, 4585.17,
-gemini-2.5-pro, standard,
-gemini-2.5-pro, progressive@3/6,
+model,method,TP,TN,FP,FN,TNR,accuracy,total_reviews,avg_inp_tokens,avg_opt_tokens,note,
+gpt-5-mini-medium,standard, 40, 104, 54, 2, 0.66, 0.72, 200, 2422.05, 2592.42,
+gpt-5-mini-medium,pes@3, 39, 115, 43, 3, 0.73, 0.77, 600, 2422.05, 2596.73, 
+gpt-5-mini-medium,vp@16, 37, 117, 41, 5, 0.74, 0.77, 721, 4237.08, 1595.26,
+gpt-5-mini-medium,progressive@3/6, 39, 129, 29, 3, 0.82, 0.84, 662, , ,
+gpt-5-medium,standard, 40, 134, 24, 2, 0.85, 0.87, 200, 2422.05, 4999.8,
+gpt-5-medium,pessimistic@3,36,141,17,6,0.8924,0.885,600,2422.05,5228.33
+gpt-5-medium,vp@16,36,141,17,6,0.8924,0.885,1522,4051.45,2157.78
+gpt-5-medium,progressive@3/6, 37, 148, 10, 5, 0.94, 0.925, 513, , ,
+gpt-5-high,standard,38,132,26,4,0.8354,0.85,200,2425.18,9686.69
+gpt-5-high,pes@3,
+gpt-5-high,vp@16,
+gpt-5-high,progressive@3/6, 34, 146, 12, 8, 0.92, 0.90, 505, , ,
+deepseek-v3.2-thinking,standard, 40, 117, 41, 2, 0.74, 0.785, 200, 2333.55, 6391.59,
+deepseek-v3.2-thinking,progressive@3/6, 34, 137, 21, 8, 0.87, 0.855, 609, 2616.59, 4585.17,
+gemini-2.5-pro,standard,40,126,32,2,0.7975,0.83,200,2471.81,13966.56
+gemini-2.5-pro,progressive@3/6,36,140,18,6,0.8861,0.88,672,3586.86,5644.64
 kimi-k2-thinking, standard,
 kimi-k2-thinking, progressive@3/6,
-kimi-k2, standard,
-kimi-k2, progressive@3/6,
+kimi-k2-instruct-0905,standard,42,49,109,0,0.3101,0.455,200,2431.53,2048.15
+kimi-k2-instruct-0905,progressive@3/6,28,113,45,14,0.7152,0.705,876,3352.59,114.92
 o3, standard,
 o3, progressive@3/6,
-gpt-oss-120b, standard,
-gpt-oss-120b, progressive@3/6,
+gpt-oss-120b,standard,36,118,40,6,0.7468,0.77,200,2230.06,5369.34
+gpt-oss-120b,progressive@3/6,37,128,30,5,0.8101,0.825,752,3184.62,4329.32
 o4-mini, standard,
 o4-mini, progressive@3/6,
 qwen3-235b-a22b-think, standard,
 qwen3-235b-a22b-think, progressive@3/6,
-claude-sonnet-4.5-thinking, standard,
-claude-sonnet-4.5-thinking, progressive@3/6,
+claude-sonnet-4-5-20250929-thinking,standard,42,77,81,0,0.4873,0.595,200,2808.62,3268.31
+claude-sonnet-4-5-20250929-thinking,progressive@3/6,40,112,46,2,0.7089,0.76,839,3877.85,2486.43
 grok-4, standard,
 grok-4, progressive@3/6,
-grok-4-fask-reasoning, standard
-grok-4-fask-reasoning, progressive@3/6,
-qwen3-30b-a3b-thinking, standard,
-qwen3-30b-a3b-thinking, progressive@3/6,
+grok-4-fast,standard,34,89,69,8,0.5633,0.615,200,2451.05,76.75
+grok-4-fast,progressive@3/6,21,123,35,21,0.7785,0.72,652,3569.6,68.27
+qwen3-30b-a3b,standard,41,52,106,1,0.3291,0.465,200,2431.53,2114.51
+qwen3-30b-a3b,progressive@3/6,38,96,62,4,0.6076,0.67,954,3431.69,1604.76
