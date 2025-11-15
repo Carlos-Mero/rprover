@@ -490,6 +490,7 @@ class PessimisticVerifier():
         self.review_times = max(1, review_times)
         self.last_majority_results: tuple[list[float], list[str]] = ([], [])
         self.stepwise_review_logs: list[dict] = []
+        self.majority_step_logs: list[dict] = []
 
     def _review_messages(self, problems, completions):
         messages = []
@@ -594,6 +595,47 @@ class PessimisticVerifier():
 
         self.stepwise_review_logs = logs
 
+    def _majority_label_from_subset(self, verdict_subset: list[str | None]) -> int | None:
+        votes = [v for v in verdict_subset if v in {"true", "false"}]
+        if not votes:
+            return None
+        positives = sum(1 for v in votes if v == "true")
+        negatives = len(votes) - positives
+        if positives > negatives:
+            return 1
+        if negatives > positives:
+            return 0
+        chosen = random.choice(votes)
+        return 1 if chosen == "true" else 0
+
+    def _record_majority_step_logs(
+        self,
+        verdicts_per_sample: list[list[str | None]],
+        ground_truth_labels: list | None,
+    ) -> None:
+        total_samples = len(verdicts_per_sample)
+        if total_samples == 0:
+            self.majority_step_logs = []
+            return
+
+        gt_vector = self._normalize_ground_truth(ground_truth_labels, total_samples)
+        step_count = max((len(v) for v in verdicts_per_sample), default=0)
+        logs: list[dict] = []
+
+        for step_idx in range(step_count):
+            preds: list[int | None] = []
+            for verdicts in verdicts_per_sample:
+                subset = verdicts[:step_idx + 1]
+                preds.append(self._majority_label_from_subset(subset))
+
+            metrics = _compute_binary_metrics(preds, gt_vector) if gt_vector is not None else None
+            entry = {"step_index": step_idx + 1}
+            if metrics is not None:
+                entry["metrics"] = metrics
+            logs.append(entry)
+
+        self.majority_step_logs = logs
+
     def __call__(self, problems, completions, ground_truth_labels=None, **kwargs):
         # Only perform parallel reviews and take the first error as verdict
         review_messages = self._review_messages(problems, completions)
@@ -630,6 +672,7 @@ class PessimisticVerifier():
 
         self.last_majority_results = (majority_rewards, majority_reviews)
         self._record_stepwise_logs(verdicts_per_sample, ground_truth_labels)
+        self._record_majority_step_logs(verdicts_per_sample, ground_truth_labels)
 
         return rewards, final_reviews
 
@@ -1182,6 +1225,7 @@ def main():
                 json.dump(step_logs, f, ensure_ascii=False, indent=2, default=str)
             logger.info("Saved stepwise pessimistic review metrics to %s", step_log_path)
 
+        majority_step_logs = getattr(evaluator, "majority_step_logs", None)
         majority_metrics = None
         if (
             preloaded_gt_labels
@@ -1192,10 +1236,15 @@ def main():
             majority_preds = [1 if bool(x) else 0 for x in majority_evals]
             majority_metrics = _compute_binary_metrics(majority_preds, gt_vector)
 
-        if majority_metrics:
+        if majority_step_logs or majority_metrics:
             majority_log_path = logdir / "pessimistic_majority_metrics.json"
+            payload = {}
+            if majority_step_logs:
+                payload["steps"] = majority_step_logs
+            if majority_metrics:
+                payload["metrics"] = majority_metrics
             with majority_log_path.open("w", encoding="utf-8") as f:
-                json.dump({"metrics": majority_metrics}, f, ensure_ascii=False, indent=2, default=str)
+                json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
             logger.info("Saved pessimistic majority metrics to %s", majority_log_path)
 
 
