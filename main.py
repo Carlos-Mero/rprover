@@ -580,20 +580,14 @@ class PessimisticVerifier():
 
         for step_idx in range(step_count):
             preds: list[int] = []
-            raw_verdicts: list[str | None] = []
             for sample_idx, verdicts in enumerate(verdicts_per_sample):
                 verdict = verdicts[step_idx] if step_idx < len(verdicts) else None
                 if verdict == "false":
                     cumulative_fail[sample_idx] = True
                 preds.append(0 if cumulative_fail[sample_idx] else 1)
-                raw_verdicts.append(verdict)
 
             metrics = _compute_binary_metrics(preds, gt_vector) if gt_vector is not None else None
-            entry = {
-                "step_index": step_idx + 1,
-                "raw_verdicts": raw_verdicts,
-                "aggregated_preds": preds,
-            }
+            entry = {"step_index": step_idx + 1}
             if metrics is not None:
                 entry["metrics"] = metrics
             logs.append(entry)
@@ -1187,6 +1181,22 @@ def main():
             with step_log_path.open("w", encoding="utf-8") as f:
                 json.dump(step_logs, f, ensure_ascii=False, indent=2, default=str)
             logger.info("Saved stepwise pessimistic review metrics to %s", step_log_path)
+
+        majority_metrics = None
+        if (
+            preloaded_gt_labels
+            and majority_evals
+            and len(majority_evals) == len(preloaded_gt_labels)
+        ):
+            gt_vector = [1 if bool(x) else 0 for x in preloaded_gt_labels]
+            majority_preds = [1 if bool(x) else 0 for x in majority_evals]
+            majority_metrics = _compute_binary_metrics(majority_preds, gt_vector)
+
+        if majority_metrics:
+            majority_log_path = logdir / "pessimistic_majority_metrics.json"
+            with majority_log_path.open("w", encoding="utf-8") as f:
+                json.dump({"metrics": majority_metrics}, f, ensure_ascii=False, indent=2, default=str)
+            logger.info("Saved pessimistic majority metrics to %s", majority_log_path)
 
 
     # Optional: evaluate the reviewer against the guider model as ground truth
