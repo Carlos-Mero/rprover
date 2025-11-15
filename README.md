@@ -67,6 +67,7 @@ RProver is a lightweight, scriptable framework for generating mathematical proof
 - Each run creates `eval_logs/<UTC-Timestamp>/` containing:
   - `logs.json`: CLI args, final `accuracy`, token stats (`average_*_tokens`), optional `verifier_evaluation`. When using the pessimistic reviewer, `logs.json` also records `majority_accuracy`.
   - `samples.json`: per-sample problem, proof, evaluation label/text, and token counts. When `--reviewer pessimistic`, additional `majority_eval`/`majority_verification` fields capture the derived majority-vote verdict without extra API calls.
+  - If `--reviewer pessimistic`: `pessimistic_step_metrics.json` logs the cumulative pessimistic prediction after each review pass plus confusion-matrix stats (`tp`, `tn`, `fp`, `fn`, `precision`, `recall`, `f1`) whenever ground-truth labels are provided via `--verifier_samples`.
   - If `--reviewer progressive`: one file per refinement pass named `progressive_iteration_<n>_samples.json` capturing per‑iteration reviews, statuses, and chunk metadata
   - If `--evaluate_reviewer`:
     - `verifier_eval.json`: accuracy, precision, recall, F1 vs guider labels
