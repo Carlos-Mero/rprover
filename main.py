@@ -923,6 +923,27 @@ class ProgressivePessimisticVerifier():
                 break
 
             chunk_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(batch_messages, **kwargs))
+            # Token usage stats for this iteration and cumulatively so far
+            latest_input_tokens = getattr(self.client, "last_input_tokens", []) or []
+            latest_comp_tokens = getattr(self.client, "last_comp_tokens", []) or []
+            avg_input_tokens_this_iter = (
+                sum(latest_input_tokens) / len(latest_input_tokens)
+                if latest_input_tokens else None
+            )
+            avg_comp_tokens_this_iter = (
+                sum(latest_comp_tokens) / len(latest_comp_tokens)
+                if latest_comp_tokens else None
+            )
+            cumulative_input_tokens = getattr(self.client, "input_tokens", []) or []
+            cumulative_comp_tokens = getattr(self.client, "comp_tokens", []) or []
+            avg_input_tokens_cumulative = (
+                sum(cumulative_input_tokens) / len(cumulative_input_tokens)
+                if cumulative_input_tokens else None
+            )
+            avg_comp_tokens_cumulative = (
+                sum(cumulative_comp_tokens) / len(cumulative_comp_tokens)
+                if cumulative_comp_tokens else None
+            )
 
             cursor = 0
             next_pending = []
@@ -1025,6 +1046,10 @@ class ProgressivePessimisticVerifier():
                 "iteration_index": iteration + 1,
                 "reviews_this_iter": reviews_this_iter,
                 "cumulative_reviews": cumulative_reviews,
+                "avg_input_tokens_this_iter": avg_input_tokens_this_iter,
+                "avg_output_tokens_this_iter": avg_comp_tokens_this_iter,
+                "avg_input_tokens_cumulative": avg_input_tokens_cumulative,
+                "avg_output_tokens_cumulative": avg_comp_tokens_cumulative,
             })
 
         # Any remaining samples (e.g., no further iterations but never failed) are treated as passes.
@@ -1303,6 +1328,10 @@ def main():
                         "resolved_samples": total_samples - pending_samples,
                         "reviews_this_iter": cost_info.get("reviews_this_iter"),
                         "cumulative_reviews": cost_info.get("cumulative_reviews"),
+                        "avg_input_tokens_this_iter": cost_info.get("avg_input_tokens_this_iter"),
+                        "avg_output_tokens_this_iter": cost_info.get("avg_output_tokens_this_iter"),
+                        "avg_input_tokens_cumulative": cost_info.get("avg_input_tokens_cumulative"),
+                        "avg_output_tokens_cumulative": cost_info.get("avg_output_tokens_cumulative"),
                     })
                 if progressive_iter_metrics:
                     verifier_eval["progressive_iteration_metrics"] = progressive_iter_metrics
