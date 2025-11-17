@@ -1,18 +1,18 @@
 method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
 standard, enable_thinking false,
 standard, enable thinking true, , , , , , , , 后续其他method实验当中默认都使用enable thinking true
-simple pessimistic, pes@1, , , , , , , , simple pessimistic只需要跑一次pes@12设定即可，前面的检验结果都会同时记录
-simple pessimistic, pes@2
-simple pessimistic, pes@3,
-simple pessimistic, pes@4,
-simple pessimistic, pes@5,
-simple pessimistic, pes@6,
-simple pessimistic, pes@7,
-simple pessimistic, pes@8,
-simple pessimistic, pes@9,
-simple pessimistic, pes@10,
-simple pessimistic, pes@11,
-simple pessimistic, pes@12,
+simple pessimistic,pes@1,41,48,110,1,200,2431.525,2063.152
+simple pessimistic,pes@2,40,60,98,2,200,2431.525,2063.152
+simple pessimistic,pes@3,39,68,90,3,200,2431.525,2063.152
+simple pessimistic,pes@4,39,73,85,3,200,2431.525,2063.152
+simple pessimistic,pes@5,39,78,80,3,200,2431.525,2063.152
+simple pessimistic,pes@6,39,84,74,3,200,2431.525,2063.152
+simple pessimistic,pes@7,38,88,70,4,200,2431.525,2063.152
+simple pessimistic,pes@8,38,88,70,4,200,2431.525,2063.152
+simple pessimistic,pes@9,38,92,66,4,200,2431.525,2063.152
+simple pessimistic,pes@10,38,98,60,4,200,2431.525,2063.152
+simple pessimistic,pes@11,38,101,57,4,200,2431.525,2063.152
+simple pessimistic,pes@12,38,102,56,4,200,2431.525,2063.152
 vertical pessimistic, vp@4, , , , , , , , vertical pessimistic由于检验范围不重叠，每一个实验设定都需要单独跑
 vertical pessimistic, vp@8,
 vertical pessimistic, vp@12,
@@ -22,7 +22,7 @@ vertical pessimistic, vp@24,
 vertical pessimistic, vp@28,
 vertical pessimistic, vp@32,
 vertical pessimistic, vp@36,
-progressive, progressive@1/6, , , , , , , , 这里所有的progressive实验都只需要跑一次progressive@4/6即可，会同时记录前置各种设定的结果
-progressive, progressive@2/6,
-progressive, progressive@3/6,
-progressive, progressive@4/6,
+progressive, progressive@1/6,40,57,101,2,200,4350.58,2363.72 这里所有的progressive实验都只需要跑一次progressive@4/6即可，会同时记录前置各种设定的结果
+progressive, progressive@2/6,39,83,75,3,477,3864.23,1944.10
+progressive, progressive@3/6,38,106,52,4,900,3476.72,1661.18
+progressive, progressive@4/6,36,124,34,6,3203.60,1400,1484.57
