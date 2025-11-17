@@ -1,0 +1,28 @@
+method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
+standard, enable_thinking false,
+standard, enable thinking true, , , , , , , , 后续其他method实验当中默认都使用enable thinking true
+simple pessimistic, pes@1, , , , , , , , simple pessimistic只需要跑一次pes@12设定即可，前面的检验结果都会同时记录
+simple pessimistic, pes@2
+simple pessimistic, pes@3,
+simple pessimistic, pes@4,
+simple pessimistic, pes@5,
+simple pessimistic, pes@6,
+simple pessimistic, pes@7,
+simple pessimistic, pes@8,
+simple pessimistic, pes@9,
+simple pessimistic, pes@10,
+simple pessimistic, pes@11,
+simple pessimistic, pes@12,
+vertical pessimistic, vp@4, , , , , , , , vertical pessimistic由于检验范围不重叠，每一个实验设定都需要单独跑
+vertical pessimistic, vp@8,
+vertical pessimistic, vp@12,
+vertical pessimistic, vp@16,
+vertical pessimistic, vp@20,
+vertical pessimistic, vp@24,
+vertical pessimistic, vp@28,
+vertical pessimistic, vp@32,
+vertical pessimistic, vp@36,
+progressive, progressive@1/6, , , , , , , , 这里所有的progressive实验都只需要跑一次progressive@4/6即可，会同时记录前置各种设定的结果
+progressive, progressive@2/6,
+progressive, progressive@3/6,
+progressive, progressive@4/6,

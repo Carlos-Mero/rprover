@@ -489,6 +489,8 @@ class PessimisticVerifier():
         self.client = LLMClient(api_base, api_key, model)
         self.review_times = max(1, review_times)
         self.last_majority_results: tuple[list[float], list[str]] = ([], [])
+        self.stepwise_review_logs: list[dict] = []
+        self.majority_step_logs: list[dict] = []
 
     def _review_messages(self, problems, completions):
         messages = []
@@ -541,19 +543,115 @@ class PessimisticVerifier():
         # Fallback if no matching verdict found (should not happen)
         return (target_verdict == "true"), (reviews[0] if reviews else "")
 
-    def __call__(self, problems, completions, **kwargs):
+    def _normalize_ground_truth(self, ground_truth_labels, total_samples: int) -> list[int] | None:
+        if ground_truth_labels is None:
+            return None
+        if len(ground_truth_labels) != total_samples:
+            logging.getLogger("pessimistic_verifier").warning(
+                "Ground truth label count (%d) does not match sample count (%d); skipping stepwise metrics.",
+                len(ground_truth_labels),
+                total_samples,
+            )
+            return None
+        normalized: list[int] = []
+        for idx, label in enumerate(ground_truth_labels):
+            if label is None:
+                logging.getLogger("pessimistic_verifier").warning(
+                    "Ground truth label at index %d is None; skipping stepwise metrics.",
+                    idx,
+                )
+                return None
+            normalized.append(1 if bool(label) else 0)
+        return normalized
+
+    def _record_stepwise_logs(
+        self,
+        verdicts_per_sample: list[list[str | None]],
+        ground_truth_labels: list | None,
+    ) -> None:
+        total_samples = len(verdicts_per_sample)
+        if total_samples == 0:
+            self.stepwise_review_logs = []
+            return
+
+        gt_vector = self._normalize_ground_truth(ground_truth_labels, total_samples)
+        step_count = max((len(v) for v in verdicts_per_sample), default=0)
+        cumulative_fail = [False] * total_samples
+        logs: list[dict] = []
+
+        for step_idx in range(step_count):
+            preds: list[int] = []
+            for sample_idx, verdicts in enumerate(verdicts_per_sample):
+                verdict = verdicts[step_idx] if step_idx < len(verdicts) else None
+                if verdict == "false":
+                    cumulative_fail[sample_idx] = True
+                preds.append(0 if cumulative_fail[sample_idx] else 1)
+
+            metrics = _compute_binary_metrics(preds, gt_vector) if gt_vector is not None else None
+            entry = {"step_index": step_idx + 1}
+            if metrics is not None:
+                entry["metrics"] = metrics
+            logs.append(entry)
+
+        self.stepwise_review_logs = logs
+
+    def _majority_label_from_subset(self, verdict_subset: list[str | None]) -> int | None:
+        votes = [v for v in verdict_subset if v in {"true", "false"}]
+        if not votes:
+            return None
+        positives = sum(1 for v in votes if v == "true")
+        negatives = len(votes) - positives
+        if positives > negatives:
+            return 1
+        if negatives > positives:
+            return 0
+        chosen = random.choice(votes)
+        return 1 if chosen == "true" else 0
+
+    def _record_majority_step_logs(
+        self,
+        verdicts_per_sample: list[list[str | None]],
+        ground_truth_labels: list | None,
+    ) -> None:
+        total_samples = len(verdicts_per_sample)
+        if total_samples == 0:
+            self.majority_step_logs = []
+            return
+
+        gt_vector = self._normalize_ground_truth(ground_truth_labels, total_samples)
+        step_count = max((len(v) for v in verdicts_per_sample), default=0)
+        logs: list[dict] = []
+
+        for step_idx in range(step_count):
+            preds: list[int | None] = []
+            for verdicts in verdicts_per_sample:
+                subset = verdicts[:step_idx + 1]
+                preds.append(self._majority_label_from_subset(subset))
+
+            metrics = _compute_binary_metrics(preds, gt_vector) if gt_vector is not None else None
+            entry = {"step_index": step_idx + 1}
+            if metrics is not None:
+                entry["metrics"] = metrics
+            logs.append(entry)
+
+        self.majority_step_logs = logs
+
+    def __call__(self, problems, completions, ground_truth_labels=None, **kwargs):
         # Only perform parallel reviews and take the first error as verdict
         review_messages = self._review_messages(problems, completions)
         all_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(review_messages, **kwargs))
         k = self.review_times
         grouped = [all_reviews[i * k:(i + 1) * k] for i in range(len(problems))]
+        verdicts_per_sample = [
+            [extract_xml_content(r, "verification") for r in reviews]
+            for reviews in grouped
+        ]
 
         final_reviews = []
         rewards = []
         majority_reviews = []
         majority_rewards = []
-        for reviews in grouped:
-            verdicts = [extract_xml_content(r, "verification") for r in reviews]
+        for reviews, verdicts in zip(grouped, verdicts_per_sample):
 
             # find first negative review for pessimistic verdict
             first_negative = None
@@ -573,6 +671,8 @@ class PessimisticVerifier():
             majority_reviews.append(majority_review)
 
         self.last_majority_results = (majority_rewards, majority_reviews)
+        self._record_stepwise_logs(verdicts_per_sample, ground_truth_labels)
+        self._record_majority_step_logs(verdicts_per_sample, ground_truth_labels)
 
         return rewards, final_reviews
 
@@ -823,6 +923,27 @@ class ProgressivePessimisticVerifier():
                 break
 
             chunk_reviews = ASYNC_LOOP.run(self.client.infer_batch_async(batch_messages, **kwargs))
+            # Token usage stats for this iteration and cumulatively so far
+            latest_input_tokens = getattr(self.client, "last_input_tokens", []) or []
+            latest_comp_tokens = getattr(self.client, "last_comp_tokens", []) or []
+            avg_input_tokens_this_iter = (
+                sum(latest_input_tokens) / len(latest_input_tokens)
+                if latest_input_tokens else None
+            )
+            avg_comp_tokens_this_iter = (
+                sum(latest_comp_tokens) / len(latest_comp_tokens)
+                if latest_comp_tokens else None
+            )
+            cumulative_input_tokens = getattr(self.client, "input_tokens", []) or []
+            cumulative_comp_tokens = getattr(self.client, "comp_tokens", []) or []
+            avg_input_tokens_cumulative = (
+                sum(cumulative_input_tokens) / len(cumulative_input_tokens)
+                if cumulative_input_tokens else None
+            )
+            avg_comp_tokens_cumulative = (
+                sum(cumulative_comp_tokens) / len(cumulative_comp_tokens)
+                if cumulative_comp_tokens else None
+            )
 
             cursor = 0
             next_pending = []
@@ -925,6 +1046,10 @@ class ProgressivePessimisticVerifier():
                 "iteration_index": iteration + 1,
                 "reviews_this_iter": reviews_this_iter,
                 "cumulative_reviews": cumulative_reviews,
+                "avg_input_tokens_this_iter": avg_input_tokens_this_iter,
+                "avg_output_tokens_this_iter": avg_comp_tokens_this_iter,
+                "avg_input_tokens_cumulative": avg_input_tokens_cumulative,
+                "avg_output_tokens_cumulative": avg_comp_tokens_cumulative,
             })
 
         # Any remaining samples (e.g., no further iterations but never failed) are treated as passes.
@@ -1011,6 +1136,8 @@ def main():
 
     # If verifier_samples is provided, use it to load problems/proofs and GT labels
     loaded_verifier_samples = None
+    preloaded_gt_labels = None
+    preloaded_gt_texts = None
     if args.verifier_samples:
         if args.verifier_samples == "Salesforce/Hard2Verify" or args.verifier_samples == "INSAIT-Institute/OPC" or args.verifier_samples == "NP_dataset/gradingbench.csv":
             ds = prepare_dataset(args.verifier_samples)
@@ -1087,11 +1214,17 @@ def main():
         evaluator = PessimisticJudger(eval_base_url, eval_api_key, args.eval_model, review_times=args.reviews)
     else:
         evaluator = Verifier(eval_base_url, eval_api_key, args.eval_model)
+    eval_call_kwargs = {
+        "reasoning_effort": args.reasoning_effort,
+        "enable_thinking": args.enable_thinking,
+    }
+    if args.reviewer == "pessimistic":
+        eval_call_kwargs["ground_truth_labels"] = preloaded_gt_labels
+
     evals, verifications = evaluator(
         problems,
         striped_proofs,
-        reasoning_effort=args.reasoning_effort,
-        enable_thinking=args.enable_thinking,
+        **eval_call_kwargs,
     )
     accuracy = sum(evals) / len(evals)
     logger.info(f"Obtained final accuracy: {accuracy}")
@@ -1106,9 +1239,38 @@ def main():
             if len(majority_evals) == len(evals) and len(evals) > 0:
                 majority_accuracy = sum(majority_evals) / len(majority_evals)
                 logger.info(f"Majority voting accuracy from the same reviews: {majority_accuracy}")
-            else:
-                majority_evals = None
-                majority_verifications = None
+        else:
+            majority_evals = None
+            majority_verifications = None
+
+        step_logs = getattr(evaluator, "stepwise_review_logs", None)
+        if step_logs:
+            step_log_path = logdir / "pessimistic_step_metrics.json"
+            with step_log_path.open("w", encoding="utf-8") as f:
+                json.dump(step_logs, f, ensure_ascii=False, indent=2, default=str)
+            logger.info("Saved stepwise pessimistic review metrics to %s", step_log_path)
+
+        majority_step_logs = getattr(evaluator, "majority_step_logs", None)
+        majority_metrics = None
+        if (
+            preloaded_gt_labels
+            and majority_evals
+            and len(majority_evals) == len(preloaded_gt_labels)
+        ):
+            gt_vector = [1 if bool(x) else 0 for x in preloaded_gt_labels]
+            majority_preds = [1 if bool(x) else 0 for x in majority_evals]
+            majority_metrics = _compute_binary_metrics(majority_preds, gt_vector)
+
+        if majority_step_logs or majority_metrics:
+            majority_log_path = logdir / "pessimistic_majority_metrics.json"
+            payload = {}
+            if majority_step_logs:
+                payload["steps"] = majority_step_logs
+            if majority_metrics:
+                payload["metrics"] = majority_metrics
+            with majority_log_path.open("w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2, default=str)
+            logger.info("Saved pessimistic majority metrics to %s", majority_log_path)
 
 
     # Optional: evaluate the reviewer against the guider model as ground truth
@@ -1166,6 +1328,10 @@ def main():
                         "resolved_samples": total_samples - pending_samples,
                         "reviews_this_iter": cost_info.get("reviews_this_iter"),
                         "cumulative_reviews": cost_info.get("cumulative_reviews"),
+                        "avg_input_tokens_this_iter": cost_info.get("avg_input_tokens_this_iter"),
+                        "avg_output_tokens_this_iter": cost_info.get("avg_output_tokens_this_iter"),
+                        "avg_input_tokens_cumulative": cost_info.get("avg_input_tokens_cumulative"),
+                        "avg_output_tokens_cumulative": cost_info.get("avg_output_tokens_cumulative"),
                     })
                 if progressive_iter_metrics:
                     verifier_eval["progressive_iteration_metrics"] = progressive_iter_metrics
