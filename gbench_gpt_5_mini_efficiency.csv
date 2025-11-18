@@ -19,9 +19,9 @@ simple pessimistic,pes@12,77,184,25,14,300,2911.02,2638.59
 
 vertical pessimistic, vp@4,
 vertical pessimistic, vp@8,
-vertical pessimistic, vp@12,
-vertical pessimistic, vp@16,77,150,59,14,0.7177,0.7567,1997,5942.99,1408.6
-vertical pessimistic, vp@20,78,152,57,13,0.7273,0.7667,1628,5975.59,1508.72
+vertical pessimistic, vp@12,77,153,56,14,0.7321,0.7667,2622,5887.13,1283.15
+vertical pessimistic, vp@16,77,150,59,14,1997,5942.99,1408.6
+vertical pessimistic, vp@20,78,152,57,13,1628,5975.59,1508.72
 vertical pessimistic, vp@24,80,144,65,11,1391,5988.0,1627.1
 vertical pessimistic, vp@28,80,147,62,11,1206,6052.63,1691.57
 vertical pessimistic, vp@32,78,137,72,13,1076,6090.39,1740.46

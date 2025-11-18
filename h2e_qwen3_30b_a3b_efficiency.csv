@@ -22,7 +22,7 @@ vertical pessimistic, vp@24,40,71,87,2,510,4394.01,1681.59
 vertical pessimistic, vp@28,40,76,82,2,0.481,0.58,458,4443.29,1686.16
 vertical pessimistic, vp@32,39,64,94,3,407,4503.62,1768.2
 vertical pessimistic, vp@36,40,59,99,2,0.3734,0.495,372,4536.52,1727.35
-progressive, progressive@1/6,40,57,101,2,200,4350.58,2363.72 这里所有的progressive实验都只需要跑一次progressive@4/6即可，会同时记录前置各种设定的结果
+progressive, progressive@1/6,40,57,101,2,200,4350.58,2363.72 
 progressive, progressive@2/6,39,83,75,3,477,3864.23,1944.10
 progressive, progressive@3/6,38,106,52,4,900,3476.72,1661.18
 progressive, progressive@4/6,36,124,34,6,3203.60,1400,1484.57
