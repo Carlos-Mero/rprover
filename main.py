@@ -794,9 +794,11 @@ class VPessimisticVerifier():
 class ProgressivePessimisticVerifier():
     """
     Iteratively applies chunked pessimistic verification with progressively
-    finer granularity. It starts with a full-proof check and then doubles the
-    number of chunks (down to min_chunk_size per chunk) for still-positive
-    samples until either an error is found or max_iters is reached.
+    finer granularity. It now begins with the same whole-proof prompt used by
+    the standard verifier to avoid repeating the solution twice, and then
+    doubles the number of chunks (down to min_chunk_size per chunk) for
+    still-positive samples until either an error is found or max_iters is
+    reached.
     """
     def __init__(self, api_base, api_key, model, max_iters: int = 3, min_chunk_size: int = 6):
         self.client = LLMClient(api_base, api_key, model)
@@ -826,6 +828,30 @@ class ProgressivePessimisticVerifier():
             chunk_lines = lines[i:i + chunk_length]
             chunks.append("\n".join(chunk_lines))
         return chunks
+
+    def _build_standard_messages_for_one(self, problem: str, full_proof: str) -> list[list[dict]]:
+        stripped_proof = strip_think_simple(full_proof)
+        return [[
+            {"role": "system", "content": (
+                "You are an assistant highly proficient in mathematics. The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction."
+            )},
+            {"role": "user", "content": (
+                "Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:\n\n"
+                "1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.\n"
+                "2. The solution actually derives the conclusion required by the original problem.\n"
+                "3. Every step of calculation and formula derivation in the solution is correct.\n"
+                "4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.\n"
+                "5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.\n\n"
+                "Consistency and error-severity policy (important):\n"
+                "- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.\n"
+                "- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.\n\n"
+                "Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any."
+                " If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error."
+                " Do not include any restatement of the entire solution or problem.\n\n"
+                f"<problem>{problem}</problem>\n\n"
+                f"<answer>{stripped_proof}</answer>"
+            )}
+        ]]
 
     def _build_messages_for_one(self, problem: str, full_proof: str, chunk_length: int) -> list[list[dict]]:
         chunks = self._split_into_chunks(full_proof, chunk_length)
@@ -910,11 +936,17 @@ class ProgressivePessimisticVerifier():
                 problem = problems[idx]
                 proof = proofs[idx]
                 chunk_length = self._chunk_length_for_iteration(proof, iteration)
-                msgs = self._build_messages_for_one(problem, proof, chunk_length)
+                if iteration == 0:
+                    msgs = self._build_standard_messages_for_one(problem, proof)
+                    iteration_mode = "standard"
+                else:
+                    msgs = self._build_messages_for_one(problem, proof, chunk_length)
+                    iteration_mode = "chunk"
                 iteration_batch_info.append({
                     "sample_index": idx,
                     "chunk_length": chunk_length,
-                    "num_chunks": len(msgs)
+                    "num_chunks": len(msgs),
+                    "mode": iteration_mode,
                 })
                 total_review_counts[idx] += len(msgs)
                 batch_messages.extend(msgs)
@@ -962,11 +994,14 @@ class ProgressivePessimisticVerifier():
                 chunk_lengths_this_iter.append(info["chunk_length"])
 
                 chunk_errors: list[str] = []
+                use_chunk_labels = info.get("mode") == "chunk"
                 for chunk_id, review in enumerate(sample_reviews, start=1):
                     verdict = extract_xml_content(review, "verification")
                     if verdict == "false":
                         formatted = strip_think_simple(review)
-                        chunk_errors.append(f"[chunk {chunk_id}] {formatted}")
+                        if use_chunk_labels:
+                            formatted = f"[chunk {chunk_id}] {formatted}"
+                        chunk_errors.append(formatted)
 
                 if chunk_errors:
                     evals[sample_idx] = 0.0
@@ -1006,6 +1041,7 @@ class ProgressivePessimisticVerifier():
                     "num_chunks": info["num_chunks"],
                     "chunk_reviews": sample_reviews,
                     "chunk_errors": chunk_errors,
+                    "mode": info.get("mode"),
                 })
 
             pending_indices = next_pending

@@ -1,6 +1,5 @@
 model,method,TP,TN,FP,FN,TNR,accuracy,total_reviews,avg_inp_tokens,avg_opt_tokens,note,
 gpt-5-mini-medium,standard, 40, 104, 54, 2, 0.66, 0.72, 200, 2422.05, 2592.42,
-gpt-5-mini-medium,majority,39,121,37,3,0.7658,0.735,600,2422.05,2615.78
 gpt-5-mini-medium,pes@3, 39, 115, 43, 3, 0.73, 0.77, 600, 2422.05, 2596.73, 
 gpt-5-mini-medium,vp@16, 37, 117, 41, 5, 0.74, 0.77, 721, 4237.08, 1595.26,
 gpt-5-mini-medium,progressive@3/6, 39, 129, 29, 3, 0.82, 0.84, 662, , ,
