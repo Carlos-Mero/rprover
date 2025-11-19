@@ -1,21 +1,19 @@
 method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
-standard, reasoning_effort none,
-standard, reasoning_effort minimal,
 standard, reasoning_effort low,83,131,78,8,300,2985.85,621.32
 standard, reasoning_effort medium,84,141,68,7,300,2985.85,2466.89
 standard, reasoning_effort high,81,147,62,10,300,2985.85,7856.57
 simple pessimistic,pes@1,83,146,63,8,300,2911.02,2638.59
-simple pessimistic,pes@2,81,158,51,10,300,2911.02,2638.59
-simple pessimistic,pes@3,79,166,43,12,300,2911.02,2638.59
-simple pessimistic,pes@4,79,169,40,12,300,2911.02,2638.59
-simple pessimistic,pes@5,78,171,38,13,300,2911.02,2638.59
-simple pessimistic,pes@6,77,172,37,14,300,2911.02,2638.59
-simple pessimistic,pes@7,77,174,35,14,300,2911.02,2638.59
-simple pessimistic,pes@8,77,174,35,14,300,2911.02,2638.59
-simple pessimistic,pes@9,77,175,34,14,300,2911.02,2638.59
-simple pessimistic,pes@10,77,179,30,14,300,2911.02,2638.59
-simple pessimistic,pes@11,77,180,29,14,300,2911.02,2638.59
-simple pessimistic,pes@12,77,184,25,14,300,2911.02,2638.59
+simple pessimistic,pes@2,81,158,51,10,600,2911.02,2638.59
+simple pessimistic,pes@3,79,166,43,12,900,2911.02,2638.59
+simple pessimistic,pes@4,79,169,40,12,1200,2911.02,2638.59
+simple pessimistic,pes@5,78,171,38,13,1500,2911.02,2638.59
+simple pessimistic,pes@6,77,172,37,14,1800,2911.02,2638.59
+simple pessimistic,pes@7,77,174,35,14,2100,2911.02,2638.59
+simple pessimistic,pes@8,77,174,35,14,2400,2911.02,2638.59
+simple pessimistic,pes@9,77,175,34,14,2700,2911.02,2638.59
+simple pessimistic,pes@10,77,179,30,14,3000,2911.02,2638.59
+simple pessimistic,pes@11,77,180,29,14,3300,2911.02,2638.59
+simple pessimistic,pes@12,77,184,25,14,3600,2911.02,2638.59
 
 vertical pessimistic, vp@4,
 vertical pessimistic, vp@8,
@@ -26,7 +24,11 @@ vertical pessimistic, vp@24,80,144,65,11,,,1391,5988.0,1627.1
 vertical pessimistic, vp@28,80,147,62,11,,,1206,6052.63,1691.57
 vertical pessimistic, vp@32,78,137,72,13,,,1076,6090.39,1740.46
 vertical pessimistic, vp@36,78,133,76,13,,,974,6069.73,1820.52
-progressive, progressive@1/6,80,116,93,11,,,300,5443.32,2755.85
-progressive, progressive@2/6,79,148,61,12,,,646,4632.14,2343.23
-progressive, progressive@3/6,79,165,44,12,,,1206,3978.969,1881.886
-progressive, progressive@4/6,78,177,32,13,,,2182,3517.54,1444.98
+progressive, progressive@1/6,83,150,59,8,300,2985.85,2427.4
+progressive, progressive@2/6,80,167,42,11,584,3463.19,2125.94
+progressive, progressive@3/6,78,176,33,13,1072,3418.11,1744.39
+progressive, progressive@4/6,78,182,27,13,1954,3230.47,1358.98
+progressive-low, progressive@1/6,83,131,78,8,300,2985.85,654.16
+progressive-low, progressive@2/6,81,158,51,10,622,3535.35,659.68
+progressive-low, progressive@3/6,75,171,38,16,1150,3367.72,586.07
+progressive-low, progressive@4/6,73,183,26,18,2046,3093.46,486.10
