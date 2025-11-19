@@ -1799,9 +1799,6 @@ def main():
 
         with open(logdir / "verifier_eval.json", "w", encoding="utf-8") as f:
             json.dump(verifier_eval, f, ensure_ascii=False, indent=2, default=str)
-        if progressive_iter_metrics:
-            with open(logdir / "verifier_eval_progressive_iterations.json", "w", encoding="utf-8") as f:
-                json.dump(progressive_iter_metrics, f, ensure_ascii=False, indent=2, default=str)
         with open(logdir / "verifier_samples.json", "w", encoding="utf-8") as f:
             json.dump(verifier_samples, f, ensure_ascii=False, indent=2, default=str)
 
