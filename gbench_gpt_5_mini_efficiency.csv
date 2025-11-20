@@ -4,18 +4,19 @@ standard, reasoning_effort minimal,
 standard, reasoning_effort low,83,131,78,8,300,2985.85,621.32
 standard, reasoning_effort medium,84,141,68,7,300,2985.85,2466.89
 standard, reasoning_effort high,81,147,62,10,300,2985.85,7856.57
+
 simple pessimistic,pes@1,83,146,63,8,300,2911.02,2638.59
-simple pessimistic,pes@2,81,158,51,10,300,2911.02,2638.59
-simple pessimistic,pes@3,79,166,43,12,300,2911.02,2638.59
-simple pessimistic,pes@4,79,169,40,12,300,2911.02,2638.59
-simple pessimistic,pes@5,78,171,38,13,300,2911.02,2638.59
-simple pessimistic,pes@6,77,172,37,14,300,2911.02,2638.59
-simple pessimistic,pes@7,77,174,35,14,300,2911.02,2638.59
-simple pessimistic,pes@8,77,174,35,14,300,2911.02,2638.59
-simple pessimistic,pes@9,77,175,34,14,300,2911.02,2638.59
-simple pessimistic,pes@10,77,179,30,14,300,2911.02,2638.59
-simple pessimistic,pes@11,77,180,29,14,300,2911.02,2638.59
-simple pessimistic,pes@12,77,184,25,14,300,2911.02,2638.59
+simple pessimistic,pes@2,81,158,51,10,600,2911.02,2638.59
+simple pessimistic,pes@3,79,166,43,12,900,2911.02,2638.59
+simple pessimistic,pes@4,79,169,40,12,1200,2911.02,2638.59
+simple pessimistic,pes@5,78,171,38,13,1500,2911.02,2638.59
+simple pessimistic,pes@6,77,172,37,14,1800,2911.02,2638.59
+simple pessimistic,pes@7,77,174,35,14,2100,2911.02,2638.59
+simple pessimistic,pes@8,77,174,35,14,2400,2911.02,2638.59
+simple pessimistic,pes@9,77,175,34,14,2700,2911.02,2638.59
+simple pessimistic,pes@10,77,179,30,14,3000,2911.02,2638.59
+simple pessimistic,pes@11,77,180,29,14,3300,2911.02,2638.59
+simple pessimistic,pes@12,77,184,25,14,3600,2911.02,2638.59
 
 vertical pessimistic, vp@4,
 vertical pessimistic, vp@8,
