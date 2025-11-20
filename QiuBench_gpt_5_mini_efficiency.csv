@@ -1,0 +1,37 @@
+method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
+standard, reasoning_effort none,
+standard, reasoning_effort minimal,
+standard, reasoning_effort low,184,15,96,5,300,1562.91,595.75,
+standard, reasoning_effort medium,185, 22, 89, 4, 0.198, 300, 1561.68, 2026.63, 数据来源是yau_bench.csv
+standard, reasoning_effort high,184,38,73,5,300,1518.06,5317.74,
+
+simple pessimistic,pes@1,189,23,88,0,300,3000.27,1612.4372
+simple pessimistic,pes@2,185,29,82,4,600,3000.27,1612.4372
+simple pessimistic,pes@3,184,34,77,5,900,3000.27,1612.4372
+simple pessimistic,pes@4,183,37,74,6,1200,3000.27,1612.4372
+simple pessimistic,pes@5,183,40,71,6,1500,3000.27,1612.4372
+simple pessimistic,pes@6,183,42,69,6,1800,3000.27,1612.4372
+simple pessimistic,pes@7,183,44,67,6,2100,3000.27,1612.4372
+simple pessimistic,pes@8,182,47,64,7,2400,3000.27,1612.4372
+simple pessimistic,pes@9,182,49,62,7,2700,3000.27,1612.4372
+simple pessimistic,pes@10,181,50,61,8,3000,3000.27,1612.4372
+simple pessimistic,pes@11,179,50,61,10,3300,3000.27,1612.4372
+simple pessimistic,pes@12,179,51,60,10,3600,3000.27,1612.4372
+simple pessimistic,pes@13,179,51,60,10,3900,3000.27,1612.4372
+simple pessimistic,pes@14,179,54,57,10,4200,3000.27,1612.4372
+simple pessimistic,pes@15,179,54,57,10,4500,3000.27,1612.4372
+
+vertical pessimistic, vp@4,
+vertical pessimistic, vp@8,
+vertical pessimistic, vp@12,
+vertical pessimistic, vp@16,
+vertical pessimistic, vp@20,
+vertical pessimistic, vp@24,
+vertical pessimistic, vp@28,
+vertical pessimistic, vp@32,
+vertical pessimistic, vp@36,
+progressive, progressive@1/6,188,40,71,1,300,2549.63,2068.16
+progressive, progressive@2/6,188,51,60,1,818,2178.15,1631.21
+progressive, progressive@3/6,187,65,46,2,1796,1916.38,1267.31
+progressive, progressive@4/6,182,78,33,7,3343,1802.05,1036.74
+progressive, progressive@5/6,175,86,25,14,5151,1770.09,909.77

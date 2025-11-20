@@ -2,8 +2,9 @@ method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_t
 standard, reasoning_effort none,
 standard, reasoning_effort minimal,
 standard, reasoning_effort low,42,95,63,0,200,2422.05,684.91
-standard, reasoning_effort medium,40, 104, 54, 2, 200, 2422.05, 2592.42, 后续其他method实验当中默认都使用medium reasoning_effort
+standard, reasoning_effort medium,40, 104, 54, 2, 200, 2422.05, 2592.42, 
 standard, reasoning_effort high,38,112,46,4,200,2422.05,7790.72
+
 simple pessimistic,pes@1,41,99,59,1,200,2422.05,2630.27375
 simple pessimistic,pes@2,41,111,47,1,200,2422.05,2630.27375
 simple pessimistic,pes@3,39,117,41,3,200,2422.05,2630.27375
@@ -16,16 +17,18 @@ simple pessimistic,pes@9,39,126,32,3,200,2422.05,2630.27375
 simple pessimistic,pes@10,39,126,32,3,200,2422.05,2630.27375
 simple pessimistic,pes@11,39,127,31,3,200,2422.05,2630.27375
 simple pessimistic,pes@12,39,129,29,3,200,2422.05,2630.27375
-vertical pessimistic, vp@4,36,109,49,6,2586,3990.38,1101.95, vertical pessimistic由于检验范围不重叠，每一个实验设定都需要单独跑
-vertical pessimistic, vp@8,38,98,60,4,1342,4082.82,1279.06
-vertical pessimistic, vp@12,40,81,77,2,923,4165.22,1391.25
-vertical pessimistic, vp@16,40,88,70,2,721,4243.24,1492.68
-vertical pessimistic, vp@20,41,88,70,1,0.557,0.645,596,4298.38,1561.49
-vertical pessimistic, vp@24,40,71,87,2,510,4394.01,1681.59
-vertical pessimistic, vp@28,40,76,82,2,0.481,0.58,458,4443.29,1686.16
-vertical pessimistic, vp@32,39,64,94,3,407,4503.62,1768.2
-vertical pessimistic, vp@36,40,59,99,2,0.3734,0.495,372,4536.52,1727.35
-progressive, progressive@1/6,40,108,50,2,200,4333.035,2710.01 这里所有的progressive实验都只需要跑一次progressive@4/6即可，会同时记录前置各种设定的结果
+
+vertical pessimistic,vp@4,
+vertical pessimistic,vp@8,
+vertical pessimistic,vp@12,40,121,37,2,923,4157.77,1429.8
+vertical pessimistic,vp@16,37,117,41,5,721,4237.08,1595.26, 这个是之前的测试
+vertical pessimistic,vp@20,
+vertical pessimistic,vp@24,40,107,51,2,510,4394.39,1819.24 
+vertical pessimistic,vp@28,
+vertical pessimistic,vp@32,
+vertical pessimistic,vp@36,40,106,52,2,372,4459.1,2052.32
+
+progressive, progressive@1/6,40,108,50,2,200,4333.035,2710.01 
 progressive, progressive@2/6,39,124,34,3,377,3661.48,2283.09
 progressive, progressive@3/6,38,133,25,4,644,3163.45,1805.95
 progressive, progressive@4/6,37,140,18,5,989,2923.73,1496.86
