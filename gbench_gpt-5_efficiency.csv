@@ -1,0 +1,39 @@
+method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
+standard, reasoning_effort none,
+standard, reasoning_effort minimal,
+standard, reasoning_effort low,78,186,23,13,300,2974.06,1972.69,
+standard, reasoning_effort medium,74, 183, 26, 17, 300, 2985.85, 5896.17,来源gradebench.csv
+standard, reasoning_effort high,76, 172, 37, 15, 300, , ,来源gradebench.csv
+
+simple pessimistic,pes@1,
+simple pessimistic,pes@2,
+simple pessimistic,pes@3,
+simple pessimistic,pes@4,
+simple pessimistic,pes@5,
+simple pessimistic,pes@6,
+simple pessimistic,pes@7,
+simple pessimistic,pes@8,
+simple pessimistic,pes@9,
+simple pessimistic,pes@10,
+simple pessimistic,pes@11,
+simple pessimistic,pes@12,
+
+vertical pessimistic, vp@4,
+vertical pessimistic, vp@8,
+vertical pessimistic, vp@12,
+vertical pessimistic, vp@16,
+vertical pessimistic, vp@20,
+vertical pessimistic, vp@24,
+vertical pessimistic, vp@28,
+vertical pessimistic, vp@32,
+vertical pessimistic, vp@36,
+
+
+progressive, progressive@1/6
+progressive, progressive@2/6,
+progressive, progressive@3/6,
+progressive, progressive@4/6,
+progressive-low, progressive@1/6,
+progressive-low, progressive@2/6,
+progressive-low, progressive@3/6,
+progressive-low, progressive@4/6,
