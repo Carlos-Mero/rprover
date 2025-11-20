@@ -1,0 +1,197 @@
+\documentclass{article} % For LaTeX2e
+\usepackage[preprint]{colm2025_conference}
+
+\usepackage{microtype}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{graphicx}
+
+\usepackage{lineno}
+
+\definecolor{darkblue}{rgb}{0, 0, 0.5}
+\hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
+
+
+\title{Pessimistic Verification for Open Ended Math Questions}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \colmfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Antiquus S.~Hippocampus, Natalia Cerebro \& Amelie P. Amygdale \thanks{ Use footnote for providing further information
+about author (webpage, alternative address)---\emph{not} for acknowledging
+funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+Department of Computer Science\\
+Cranberry-Lemon University\\
+Pittsburgh, PA 15213, USA \\
+\texttt{\{hippo,brain,jen\}@cs.cranberry-lemon.edu} \\
+\And
+Ji Q. Ren \& Yevgeny LeNet \\
+Department of Computational Neuroscience \\
+University of the Witwatersrand \\
+Joburg, South Africa \\
+\texttt{\{robot,net\}@wits.ac.za} \\
+\AND
+Coauthor \\
+Affiliation \\
+Address \\
+\texttt{email}
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\begin{document}
+
+\ifcolmsubmission
+\linenumbers
+\fi
+
+\maketitle
+
+\begin{abstract}
+  The key limitation of the verification performance lies in the ability of error detection. With this intuition we designed several variants of pessimistic verification, which are simple workflows that could significantly improve the verification of open-ended math questions. In pessimistic verification we conducts multiple reviews on a single proof with a special focus on certain parts, and reports false if any one of them finds an error. This simple technique significantly improves the performance across many math verification benchmarks without introducing too much extra budget. Its token efficiency even surpassed extended long-cot in test-time scaling. Self verification and correction are one of the central perspectives of reasoning and intelligence. This enables an agent to constantly refine its own reasoning or actions, and they are also critical for effectively performing long tasks such as mathematical research. We believe pessimistic verification would be especially useful for many related researches.
+\end{abstract}
+
+\section{Introduction}
+
+Since the release of OpenAI o1~\citep{openai_openai_2024} and DeepSeek-R1~\citep{deepseek-ai_deepseek-r1_2025}, reasoning has become one of the most important topics in large language model (LLM) research within both academia and industry. Nevertheless, the scalability of the training recipe behind current large reasoning models (LRMs) is still limited by the requirement of verifiable reward. Even in math, one of the most successful domain of LRM, the absence of a generic verifiable reward still introduces significant challenges to more advanced, open-ended and long-form reasoning tasks~\citep{xu_direct_2025}.
+
+One possible solution to this problem is through formal theorem provers such as Lean~\citep{chen_seed-prover_2025, varambally_hilbert_2025}, which could provide completely reliable verification on math proofs. However, this approach would introduce notable external budget to the AI system and their performance still largely falls behind that of provers in natural language~\citep{dekoninck_open_2025}. Another line of work focuses on leveraging the internal capability of the LLM to achieve self evolution~\citep{zuo_ttrl_2025, yu_rlpr_2025, xu_direct_2025}.
+
+We contend that the importance of self-verification capabilities can be reflected in several key dimensions:
+
+\begin{itemize}
+  \item Effective self-verification can substantially enhance the reliability of model outputs and significantly improve overall performance. The performance IMO level math problems can be notably enhanced via a verifier-guided workflow according to \citet{huang_gemini_2025, luong_towards_2025}.
+  \item Existing research indicates that the reliability of single-step task execution strongly influences the duration over which a system can operate dependably, thus introspective abilities may be particularly critical for long-horizon tasks~\citep{kwa_measuring_2025}.
+  \item We further argue that a general intelligent system should possess intrinsic mechanisms for self-validation, rather than relying exclusively on external ground-truth signals or verification modules.
+\end{itemize}
+
+Intuitively we believe that the key limitation of verification lies in the ability of finding errors in a proof, which is also supported by some recent researches~\citep{pandit_hard2verify_2025}. So in this work we introduce three simple workflows which we call \textbf{simple pessimistic verification}, \textbf{vertical pessimistic verification}, and \textbf{progressive pessimistic verification}. These methods imitate the common practice of the review process of math papers, where a paper would be rejected if any one reviewer finds an error in it. They will review a given solution multiple times from different perspectives, and the whole proof will be considered false if any one review finds an error. We have conducted a series of experiments on three datasets, \textit{Hard2Verify}~\citep{pandit_hard2verify_2025}, \textit{IMO-GradingBench}~\citep{luong_towards_2025}, and our homemade \textit{QiuZhen-Bench}. The former two benchmarks are both contest-level math grading benchmarks with expert annotations. \textit{QiuZhenBench} was collected and curated from S.-T. Yau College Student Mathematics Contest and the doctoral qualifying exams fron QiuZhen college, Tsinghua University. These exams covers a wide range of topics in undergraduate-level mathematics and are well-known for their high difficulty. On all benchmarks our methods consistently show impressive improvements in error detection rate and overall f1 score, indicating their effectiveness on proof verifications.
+
+\section{Method}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=1.0\textwidth]{pessimistic_verifiers.pdf}
+  \caption{Three variants of pessimistic verification methods in this work. In following experiments they will separately be denoted as ``pes@n'', ``vp@l'', and ``prog@n/l''}
+  \label{fig:pverify-methods}
+\end{figure}
+
+\subsection{Metrics}
+
+In this work, we treat mathematical proof verification as a binary classification problem and focus on the following performance metrics:
+
+\begin{itemize}
+  \item \textbf{True Negative Rate (TNR)}: The proportion of detected errors among all erroneous proofs. This is the primary metric for evaluating the model’s ability to identify incorrect proofs.
+  \item \textbf{True Positive Rate (TPR, recall)}: The proportion of proofs classified as correct among all truly correct proofs. This helps assess the model’s proof-verification capability.
+  \item \textbf{Precision}: The proportion of truly correct proofs among all proofs that the model classifies as correct. This measures the reliability of the model’s “correct” predictions.
+  \item \textbf{F1 Score}: The harmonic mean of precision and recall, providing a balanced indicator of performance when both false positives and false negatives matter.
+\end{itemize}
+
+\subsection{Simple pessimistic verification}
+
+A common strategy of enhancing model capability is through majority voting. In majority voting we run the same requests in parallel for multiple times, and choose the majority as final answer. However, this mechanism does not work on verification tasks according to our experiments and some related researches~\citep{pandit_hard2verify_2025}.
+
+In simple pessimistic verification, we conduct multiple reviews on a single proof as majority voting, but instead of using the majority as final answer, we will constantly choose the worst verification from these reviews. As shown in Figure~\ref{fig:pes-vs-maj}, this method drasticly improves the overall performance of evaluation where majority has almost no effect.
+
+We can roughly understand this phenomenon as follows: since the most difficult part of mathematical proof verification is detecting errors, it is likely that only a small number of evaluations can identify the critical mistakes. In this case, majority voting may actually restrict the model’s ability to uncover potential errors, while pessimistic verification further reinforces this ability.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=1.0\textwidth]{./pes_vs_maj.pdf}
+  \caption{The comparion of simple pessimistic verification and majority voting. The former exhibits steady performance gains as sampling budget increases, whereas the latter shows almost no changes in performance.}
+  \label{fig:pes-vs-maj}
+\end{figure}
+
+\subsection{Vertical pessimistic verification}
+
+In spite of simply applying multiple reviews on the whole proof, we also explored a pessimistic verification from another dimension. As shown in Figure~\ref{fig:vertical-prompting}, we adopted a special prompting method and require the LLM to focus on a certain part of the proof, and try looking deep into these contents to find errors. Vertical pessimistic verification adopts a hyperparameter $l$, it first splits the whole proof into chunks with $l$ lines, and create a series of parallel review tasks for each chunk. Although this method only goes through the proof once, we also witnessed improved performance in error detection and even a higher scaling efficiency compared to simple pessimistic verification. 
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=1.0\textwidth]{./vertical_review_prompting.pdf}
+  \caption{The vertical review prompting method used in vertical pessimistic verification and progressive pessimistic verification.}
+  \label{fig:vertical-prompting}
+\end{figure}
+
+\subsection{Progressive pessimistic verification}
+
+Combining the mechanism of both simple and vertical methods we can create a progressive pessimistic verification method. This method starts from the whole proof verification, and then progressively subdivide the proof for up to $n$ times. Each chunk is restricted to contain at least $l$ lines. After this process we can create at most $2^n - 1$ different verification requests on a single proof at different scales. This approach eventually achieved the highest performance under certain sampling budget.
+
+\subsection{Pruning in pessimistic verification}
+
+The mechanism of pessimistic verification also enables pruning in the process. We can implement serial execution at certain levels and stop subsequent checks once an earlier validation detects an error. This allows us to effectively reduce computational resource consumption without sacrificing performance. However, running in a serial manner also slows down execution speed, so we need to find a balance between speed and cost.
+
+The progressive verification approach naturally supports pruning. It can run each round of verification in order from coarse to fine, filtering out incorrect answers step by step. Therefore, in our experiments, pruning is enabled by default for this method, and other approaches can be applied in a similar way. Pruning is especially useful when most of the examples in the dataset are negative examples.
+
+\section{Experiments}
+
+\subsection{Datasets}
+
+In our experiments we primarily use three datasets for evaluation, and we constantly use the same prompt and workflow setting across all these dataset. Here are some descriptions about them:
+
+\begin{itemize}
+  \item \textbf{IMO-GradingBench}~\citep{luong_towards_2025}. This dataset contains 1,000 human-graded solutions to IMO-level proof problems from IMO-ProofBench~\citep{luong_towards_2025}, from which we selected a subset with 300 samples for evaluation. This is a challenging test of fine-grained mathematical proof evaluation.
+  \item \textbf{Hard2Verify}~\citep{pandit_hard2verify_2025}. Hard2Verify contains 200 challenging problems and solutions from recent math conpetitions such as IMO and Putnam. The solutions are generated by strong models such as GPT-5 and Gemini 2.5 Pro and annotated by humans.
+  \item \textbf{QiuZhen-Bench}. This is a homemade collection of advanced math problems, with questions sourced from challenging university-level math competitions. It serves as a supplement to the previous two elementary math competition problem datasets. We randomly selected a subset of 300 problems, had them answered by GPT-5-mini, and used GPT-5 for labeling. This subset can be used to evaluate the performance of weaker models. You can refer to Appendix~\ref{sec:qiuzhen-bench} for more details.
+\end{itemize}
+
+All evaluation in our experiments was conducted at the response level, and for IMO-GradingBench, only the responses that obtained fully 7 points are considered correct, otherwise they will all be considered false. And aside from our experiments, we will simply use single pass verification as the baseline, since we already know that majority voting has almost no effect on evaluation.
+
+\subsection{Performance}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=1.0\textwidth]{tnr_f1_comparison.pdf}
+  \caption{The main results under progressive pessimistic verification. Thinking mode is enabled for all models if possible, and the reasoning effort of gpt series model is set to medium. This method constantly improves the classification performance across all tested models.}
+  \label{fig:main-results}
+\end{figure}
+
+\subsection{Scaling potential of pessimistic verification}
+
+\subsection{Case study}
+
+\section{Related work}
+
+Using LLM for evaluation or verification tasks is a natural idea. At the early development stage of LLM, some works have already tried this method on traditional tasks in natural language processing, such as text summarization~\citep{liu_g-eval_2023}, dialog generation~\citep{liu_g-eval_2023}, and machine translation~\citep{zheng_judging_2023}. This approach has achieved some results, but several problems still remain, such as scoring bias~\citep{li_evaluating_2025} and self-inconsistency~\citep{haldar_rating_2025}.
+
+The open-ended math problem lies between the math answering problem and other evaluation problems. It lacks simple and direct means of verification, but its correctness is entirely objective. Existing works in this area primarily focus on the alignment of LLM grading and that of humans. Some of them proposed certain agentic workflows that could enhance this ability~\citep{mahdavi_refgrader_2025, mahdavi_scaling_2025}. Reinforcement learning on manually annotated data also exhibited effectiveness on the evaluation of mathematical proofs~\citep{dekoninck_open_2025}. However, these methods lack the scalability in further enhancing the performance, and they cannot distinguish performance improvements brought by subjective preference alignment from those resulting from objectively discovering new errors. Some work also highlights the importance of error detection, as this is the key ability that separates strong verifiers from weaker ones~\citep{pandit_hard2verify_2025}. Before the release of this work, there is no well-known method that could leverage test-time scaling to obtain better evaluation performance other than scaling long chain of thought~\citep{pandit_hard2verify_2025}.
+
+\section{Conclusion and discussion}
+
+In this work we proposed several variants of pessimistic verification method, which exhibits strong performance and even higher scaling potential than long chain of thought on the evaluation of open-ended math problems. These methods construct multiple different verification queries for a single mathematical proof in different ways, and deems the proof incorrect if any one of these queries determines it to be wrong.
+
+Beyond the existing concrete implementations and results, we believe that the error-centered idea behind pessimistic verification is what truly deserves attention. This approach will naturally make the verification of mathematical problems increasingly stringent, which may also align with the field’s gradual trend toward greater formalization and rigor. It may likewise help guide large language models away from merely computing correct answers and toward generating fully rigorous proofs.
+
+We can also envision several direct applications of pessimistic verification:
+
+\begin{itemize}
+  \item Using pessimistic verification in math or code related workflows can further improve the reliability of the response, especially for long-form tasks.
+  \item This method can further push the capability frontier of state-of-the-art large models, so there is an opportunity to incorporate it into the training pipeline to further raise the upper limit of large models’ abilities in executing verification and rigorous proof tasks.
+\end{itemize}
+
+We are also excited about the future works inspired by our pessimistic verification.
+
+\bibliography{pverify}
+\bibliographystyle{colm2025_conference}
+
+\appendix
+\section{Appendix}
+
+\subsection{Detail in QiuZhen-Bench}\label{sec:qiuzhen-bench}
+
+\subsection{Prompt template}
+
+\subsection{More detailed case studies}
+
+\end{document}
