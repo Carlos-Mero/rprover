@@ -1,9 +1,9 @@
 method, hyperparameter, TP, TN, FP, FN, total_reviews, avg_inp_tokens, avg_opt_tokens, note
 standard, reasoning_effort none,
 standard, reasoning_effort minimal,
-standard, reasoning_effort low,
-standard, reasoning_effort medium,
-standard, reasoning_effort high,
+standard, reasoning_effort low,78,186,23,13,300,2974.06,1972.69,
+standard, reasoning_effort medium,74, 183, 26, 17, 300, 2985.85, 5896.17,来源gradebench.csv
+standard, reasoning_effort high,76, 172, 37, 15, 300, , ,来源gradebench.csv
 
 simple pessimistic,pes@1,
 simple pessimistic,pes@2,
