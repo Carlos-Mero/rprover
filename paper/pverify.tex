@@ -382,6 +382,152 @@ f<chunk>{chunk}</chunk>
 
 \subsection{Original data in experiments}
 
-\subsection{More detailed case studies}
+\subsection{More detailed case studies}\label{sec:case-studies}
+
+In this section we primarily focus on the false negative cases reported by different verifiers, these are the most informative cases in our experiments.
+
+\subsubsection{False negative examples on IMO-GradingBench}
+
+\begin{promptbox}{case1: problem}
+For a positive integer $n$, let $A_{n}$ be the number of perfect powers less than or equal to $n$. Here, a perfect power is a number that can be expressed in the form $a^{b}$, where $a$ is a positive integer and $b$ is an integer greater than or equal to 2. Prove that there are infinitely many $n$ such that $A_{n}$ divides $n+2024$.
+\end{promptbox}
+\begin{promptbox}{case1: proof}
+Let $S$ be the set of perfect powers. A perfect power is a positive integer that can be expressed in the form $a^b$, where $a$ is a positive integer and $b$ is an integer greater than or equal to 2. The set of perfect powers, sorted in increasing order, is $\{1, 4, 8, 9, 16, 25, 27, \dots\}$.
+For a positive integer $n$, $A_n$ is the number of perfect powers less than or equal to $n$. So, $A_n = |S \cap \{1, 2, \dots, n\}|$.
+The function $A_n$ is a non-decreasing step function. It is constant between consecutive perfect powers. Let $p_k$ denote the $k$-th perfect power. For any integer $n$ in the range $p_k \le n < p_{k+1}$, the value of $A_n$ is constant and equal to $k$.
+
+We want to prove that there are infinitely many positive integers $n$ such that $A_n$ divides $n+2024$.
+
+Our strategy is to find an infinite sequence of disjoint integer intervals, and in each interval, find one such integer $n$.
+Let's consider an interval $[p_k, p_{k+1}-1]$ where $A_n$ is constant, equal to $k$. The condition we want to satisfy is $k \mid (n+2024)$. This is equivalent to the congruence relation $n \equiv -2024 \pmod{k}$.
+The interval $[p_k, p_{k+1}-1]$ contains $p_{k+1}-p_k$ consecutive integers. If the length of this interval is at least $k$, the integers it contains form a complete residue system modulo $k$. In such a case, there is guaranteed to be an integer $n$ in the interval satisfying $n \equiv -2024 \pmod{k}$.
+
+So, the problem reduces to showing that there are infinitely many values of $k$ for which the gap between consecutive perfect powers, $p_{k+1}-p_k$, is greater than or equal to $k$.
+
+We will focus on a special subsequence of perfect powers: the squares. Consider the gaps between consecutive squares. Let $m \ge 2$ be an integer. We will analyze the interval of integers $I_m = [(m-1)^2, m^2-1]$. We will show that for all sufficiently large $m$:
+1.  $A_n$ is constant for all $n \in I_m$. To do this, we will prove that there are no perfect powers in the open interval $((m-1)^2, m^2)$.
+2.  The length of the interval $I_m$ is greater than the value of $A_n$ for $n \in I_m$.
+
+If these two conditions hold for some large $m$, let $k_m$ be the constant value of $A_n$ on $I_m$. The length of $I_m$ is $(m^2-1) - (m-1)^2 + 1 = 2m-1$. Condition 2 means $2m-1 > k_m$. As argued above, since the interval $I_m$ contains $2m-1 > k_m$ consecutive integers, there must exist an integer $n_m \in I_m$ such that $n_m \equiv -2024 \pmod{k_m}$. For this $n_m$, we have $A_{n_m}=k_m$, and thus $A_{n_m} \mid (n_m+2024)$.
+
+If we can show that these conditions hold for all $m$ greater than some integer $M$, we can find a solution $n_m$ for each $m \ge M$. Since the intervals $I_m$ are disjoint for different $m$, the solutions $n_m$ will be distinct, proving that there are infinitely many such integers.
+
+We now formalize and prove these two main claims.
+
+**Claim 1:** For all sufficiently large integers $m$, there are no perfect powers in the open interval $((m-1)^2, m^2)$.
+
+**Proof:**
+A perfect power in the interval $((m-1)^2, m^2)$ cannot be a perfect square, as there are no integers between $m-1$ and $m$. Therefore, any such perfect power must be of the form $x^j$ where $x \ge 2$ and $j \ge 3$ are integers.
+For $x^j$ to be in the interval, we must have $(m-1)^2 < x^j < m^2$.
+Taking the $j$-th root of this inequality gives $(m-1)^{2/j} < x < m^{2/j}$.
+For an integer $x$ to exist in this range, the length of the interval $((m-1)^{2/j}, m^{2/j})$ must be greater than 1 for some $j$.
+The possible values for the exponent $j$ are limited by the condition $2^j \le x^j < m^2$, which implies $j < 2\log_2 m$.
+
+Let $N(a, b)$ be the number of perfect powers in the open interval $(a, b)$. The total number of perfect powers in $((m-1)^2, m^2)$ is bounded by the sum of the number of integer candidates for the base $x$ over all possible prime exponents $j$. For simplicity, we sum over all integers $j \ge 3$:
+$$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( \lfloor m^{2/j} \rfloor - \lceil (m-1)^{2/j} \rceil + 1 \right)$$
+A simpler bound is the sum of the lengths of the intervals for $x$:
+$$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( m^{2/j} - (m-1)^{2/j} \right)$$
+Let's analyze the term $m^{2/j} - (m-1)^{2/j}$. By the Mean Value Theorem applied to the function $f(t) = t^{2/j}$ on the interval $[m-1, m]$, for each $j$ there exists some $c_j \in (m-1, m)$ such that:
+$$m^{2/j} - (m-1)^{2/j} = f'(c_j) \cdot (m - (m-1)) = \frac{2}{j}c_j^{\frac{2}{j}-1}$$
+Since $j \ge 3$, the exponent $\frac{2}{j}-1$ is negative. As $c_j > m-1$, we have $c_j^{\frac{2}{j}-1} < (m-1)^{\frac{2}{j}-1}$.
+So, $m^{2/j} - (m-1)^{2/j} < \frac{2}{j}(m-1)^{\frac{2}{j}-1}$.
+
+Now we bound the sum. For $j \ge 3$, the exponent $\frac{2}{j}-1 \le \frac{2}{3}-1 = -\frac{1}{3}$.
+Assuming $m-1 \ge 1$, we have $(m-1)^{\frac{2}{j}-1} \le (m-1)^{-1/3}$.
+$$N((m-1)^2, m^2) < \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \frac{2}{j}(m-1)^{\frac{2}{j}-1} \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \frac{2}{3}(m-1)^{-1/3}$$
+The number of terms in the summation is $\lfloor 2\log_2 m \rfloor - 2 < 2\log_2 m$.
+$$N((m-1)^2, m^2) < (2\log_2 m) \cdot \frac{2}{3}(m-1)^{-1/3} = \frac{4 \log_2 m}{3(m-1)^{1/3}}$$
+As $m \to \infty$, this upper bound tends to 0. To see this formally:
+$$ \lim_{m\to\infty} \frac{4 \log_2 m}{3(m-1)^{1/3}} = \lim_{m\to\infty} \frac{4 \ln m}{3 \ln 2 \cdot (m-1)^{1/3}} = 0 $$
+since any positive power of $m$ grows faster than any power of $\ln m$.
+Since $N((m-1)^2, m^2)$ must be a non-negative integer, there must exist an integer $M_1$ such that for all $m \ge M_1$, $N((m-1)^2, m^2) = 0$. This proves Claim 1.
+
+**Claim 2:** For all sufficiently large integers $m$, $2m-1 > A_{(m-1)^2}$.
+
+**Proof:**
+We need an upper bound for $A_n$. The set of perfect powers is the union of the sets of squares, cubes, 5th powers, and so on. A simple upper bound for $A_n$ is obtained by summing the number of $j$-th powers up to $n$ for all $j \ge 2$, ignoring overlaps which leads to overcounting.
+The number of $j$-th powers up to $n$ is $\lfloor n^{1/j} \rfloor$.
+$$ A_n \le \sum_{j=2}^{\lfloor \log_2 n \rfloor} \lfloor n^{1/j} \rfloor < \sum_{j=2}^{\lfloor \log_2 n \rfloor} n^{1/j} $$
+We can write this as:
+$$ A_n < n^{1/2} + n^{1/3} + n^{1/4} + \dots + n^{1/\lfloor\log_2 n\rfloor} $$
+The number of terms in the sum after $n^{1/2}$ is $\lfloor \log_2 n \rfloor - 2$. For $j \ge 3$, we have $n^{1/j} \le n^{1/3}$ (for $n \ge 1$).
+So, we can bound the sum as:
+$$ A_n < n^{1/2} + (\lfloor \log_2 n \rfloor - 2)n^{1/3} < n^{1/2} + (\log_2 n) n^{1/3} $$
+Now, let's apply this bound to $A_{(m-1)^2}$. Let $n = (m-1)^2$.
+$$ A_{(m-1)^2} < \sqrt{(m-1)^2} + (\log_2((m-1)^2)) \cdot ((m-1)^2)^{1/3} $$
+$$ A_{(m-1)^2} < m-1 + (2\log_2(m-1)) \cdot (m-1)^{2/3} $$
+We want to prove that $2m-1 > A_{(m-1)^2}$ for sufficiently large $m$. It is sufficient to show that:
+$$ 2m-1 > m-1 + 2\log_2(m-1) \cdot (m-1)^{2/3} $$
+This inequality simplifies to:
+$$ m > 2\log_2(m-1) \cdot (m-1)^{2/3} $$
+For $m > 1$, we can divide by $m^{2/3}$:
+$$ m^{1/3} > 2\log_2(m-1) \cdot \left(\frac{m-1}{m}\right)^{2/3} = 2\log_2(m-1) \cdot \left(1 - \frac{1}{m}\right)^{2/3} $$
+As $m \to \infty$, the term $(1-1/m)^{2/3}$ approaches 1. The inequality will hold if $m^{1/3}$ grows faster than $2\log_2(m-1)$. To confirm this, we examine the limit of their ratio:
+$$ \lim_{x\to\infty} \frac{x^{1/3}}{2\log_2(x-1)} = \lim_{x\to\infty} \frac{x^{1/3} \ln 2}{2 \ln(x-1)} $$
+Using L'Hôpital's rule on this $\frac{\infty}{\infty}$ form:
+$$ = \lim_{x\to\infty} \frac{\frac{1}{3}x^{-2/3} \ln 2}{2 \cdot \frac{1}{x-1}} = \lim_{x\to\infty} \frac{\ln 2}{6} \frac{x-1}{x^{2/3}} = \lim_{x\to\infty} \frac{\ln 2}{6} (x^{1/3} - x^{-2/3}) = \infty $$
+Since this limit is infinite, $x^{1/3}$ grows faster than any constant multiple of $\log_2(x-1)$.
+Therefore, there exists an integer $M_2$ such that for all $m \ge M_2$, the inequality $m^{1/3} > 2\log_2(m-1) \cdot (1 - 1/m)^{2/3}$ holds. This proves Claim 2.
+
+**Conclusion**
+
+Let $M = \max(M_1, M_2)$. For every integer $m \ge M$, we have established the following:
+1.  From Claim 1, the interval $((m-1)^2, m^2)$ contains no perfect powers. This means that for any integer $n$ in the interval $I_m = [(m-1)^2, m^2-1]$, the set of perfect powers less than or equal to $n$ is the same as the set of perfect powers less than or equal to $(m-1)^2$.
+    Thus, $A_n$ has a constant value for all $n \in I_m$. Let this value be $k_m = A_{(m-1)^2}$.
+
+2.  From Claim 2, the inequality $2m-1 > A_{(m-1)^2} = k_m$ holds.
+    The length of the interval $I_m$ is $(m^2-1) - (m-1)^2 + 1 = 2m-1$.
+    So, for $m \ge M$, the length of the interval $I_m$ is strictly greater than $k_m$.
+
+We are looking for an integer $n$ such that $A_n \mid (n+2024)$. For any $m \ge M$, we seek an $n \in I_m$ satisfying $k_m \mid (n+2024)$. This is equivalent to finding an $n$ in the range $(m-1)^2 \le n \le m^2-1$ that satisfies the congruence:
+$$n \equiv -2024 \pmod{k_m}$$
+The interval $I_m$ contains the sequence of consecutive integers $(m-1)^2, (m-1)^2+1, \dots, m^2-1$. The length of this sequence is $2m-1$. Since $m \ge M$, we have $2m-1 > k_m$. Because the sequence of integers in $I_m$ is longer than a full cycle of residues modulo $k_m$, it is guaranteed to contain at least one integer from each residue class modulo $k_m$.
+In particular, there must exist an integer $n_m \in I_m$ such that $n_m \equiv -2024 \pmod{k_m}$.
+For this $n_m$, we have $A_{n_m} = k_m$, and so $A_{n_m} \mid (n_m+2024)$.
+
+For each integer $m \ge M$, we have successfully found an integer $n_m$ that satisfies the given property. To complete the proof, we must show that this process generates an infinite number of distinct solutions.
+
+Let $m$ and $m'$ be two integers such that $M \le m < m'$.
+The solution $n_m$ lies in the interval $I_m = [(m-1)^2, m^2-1]$.
+The solution $n_{m'}$ lies in the interval $I_{m'} = [(m'-1)^2, (m')^2-1]$.
+Since $m' > m$, we must have $m' \ge m+1$.
+The smallest value in the interval $I_{m'}$ is $(m'-1)^2 \ge (m+1-1)^2 = m^2$.
+The largest value in the interval $I_m$ is $m^2-1$.
+So, for any $n \in I_m$ and $n' \in I_{m'}$, we have $n \le m^2-1 < m^2 \le n'$. This shows that the intervals $I_m$ and $I_{m'}$ are disjoint.
+Consequently, the solutions $n_m \in I_m$ and $n_{m'} \in I_{m'}$ are distinct.
+
+Since we can choose any integer $m \ge M$, we have constructed an infinite sequence of distinct solutions $\{n_m\}_{m \ge M}$.
+Therefore, there are infinitely many integers $n$ such that $A_n$ divides $n+2024$.
+\end{promptbox}
+
+The manually annotated label in the dataset is true (7 points), while our method found a critical error in it:
+
+\begin{promptbox}{case1: review from GPT-5-mini}
+<verification>false</verification>
+
+The main (fatal) error is in Claim~1: the author replaces the integer count
+\[
+\bigl\lfloor m^{2/j} \bigr\rfloor - \bigl\lceil (m-1)^{2/j} \bigr\rceil + 1
+\]
+by the real length \(m^{2/j} - (m-1)^{2/j}\). That inequality is not valid in general
+(e.g.\ an interval of real length \(<1\) can still contain an integer). Thus the bound
+\[
+N\bigl((m-1)^2,m^2\bigr) \le \sum_j \bigl(m^{2/j} - (m-1)^{2/j}\bigr)
+\]
+is unjustified, and the conclusion “this sum \(\to 0 \Rightarrow N = 0\) for large \(m\)”
+does not follow. Because of this mistake the proof does not establish that the open
+interval \(\bigl((m-1)^2,m^2\bigr)\) contains no perfect powers for all large \(m\), and
+the rest of the argument (which depends critically on that claim) fails.
+\end{promptbox}
+\begin{promptbox}{case1: our comment}
+The gt\_label is wrong, the pred\_label is correct.
+
+Fatal error in Claim 1: It is invalid to use the length of a real interval to upper-bound the number of integer points, because when the interval length is < 1 it may still contain integers. Therefore, the conclusion ``limit = 0 => final result = 0'' does not hold; Claim 1 has not been proved and the proof fails.
+
+$$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( \lfloor m^{2/j} \rfloor - \lceil (m-1)^{2/j} \rceil + 1 \right)$$
+A simpler bound is the sum of the lengths of the intervals for (x):
+$$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( m^{2/j} - (m-1)^{2/j} \right)$$
+This part is incorrect.
+\end{promptbox}
 
 \end{document}

@@ -17,6 +17,18 @@ simple pessimistic,pes@9,77,175,34,14,2700,2911.02,2638.59
 simple pessimistic,pes@10,77,179,30,14,3000,2911.02,2638.59
 simple pessimistic,pes@11,77,180,29,14,3300,2911.02,2638.59
 simple pessimistic,pes@12,77,184,25,14,3600,2911.02,2638.59
+simple pes. (low reasoning_effort),pes@1,84,136,73,7,300,2985.85,633.74
+simple pes. (low reasoning_effort),pes@2,83,152,57,8,600,2985.85,633.74
+simple pes. (low reasoning_effort),pes@3,82,159,50,9,900,2985.85,633.74
+simple pes. (low reasoning_effort),pes@4,80,162,47,11,1200,2985.85,633.74
+simple pes. (low reasoning_effort),pes@5,80,166,43,11,1500,2985.85,633.74
+simple pes. (low reasoning_effort),pes@6,80,168,41,11,1800,2985.85,633.74
+simple pes. (low reasoning_effort),pes@7,80,169,40,11,2100,2985.85,633.74
+simple pes. (low reasoning_effort),pes@8,79,170,39,12,2400,2985.85,633.74
+simple pes. (low reasoning_effort),pes@9,79,172,37,12,2700,2985.85,633.74
+simple pes. (low reasoning_effort),pes@10,78,174,35,13,3000,2985.85,633.74
+simple pes. (low reasoning_effort),pes@11,78,175,34,13,3300,2985.85,633.74
+simple pes. (low reasoning_effort),pes@12,77,176,33,14,3600,2985.85,633.74
 
 vertical pessimistic, vp@4,
 vertical pessimistic, vp@8,
@@ -33,7 +45,7 @@ progressive, progressive@1/6,83,150,59,8,300,2985.85,2427.4
 progressive, progressive@2/6,80,167,42,11,584,3463.19,2125.94
 progressive, progressive@3/6,78,176,33,13,1072,3418.11,1744.39
 progressive, progressive@4/6,78,182,27,13,1954,3230.47,1358.98
-progressive-low, progressive@1/6,83,131,78,8,300,2985.85,654.16
-progressive-low, progressive@2/6,81,158,51,10,622,3535.35,659.68
-progressive-low, progressive@3/6,75,171,38,16,1150,3367.72,586.07
-progressive-low, progressive@4/6,73,183,26,18,2046,3093.46,486.10
+progressive (low reasoning_effort), progressive@1/6,83,131,78,8,300,2985.85,654.16
+progressive (low reasoning_effort), progressive@2/6,81,158,51,10,622,3535.35,659.68
+progressive (low reasoning_effort), progressive@3/6,75,171,38,16,1150,3367.72,586.07
+progressive (low reasoning_effort), progressive@4/6,73,183,26,18,2046,3093.46,486.10
