@@ -1251,7 +1251,7 @@ class ProgressivePessimisticVerifier():
                     "Then we provide a specific chunk from the solution for focused checking. "
                     "Your task: Check ONLY the given chunk for errors while considering the overall context.\n\n"
                     "Checklist:\n"
-                    "1. The chunk’s reasoning and calculations adhere to mathematical correctness.\n"
+                    "1. The chunk's reasoning and calculations adhere to mathematical correctness.\n"
                     "2. Any theorems used in the chunk match their hypotheses and conclusions.\n"
                     "3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.\n\n"
                     "Consistency and error-severity policy (important):\n"
