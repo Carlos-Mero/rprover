@@ -12,6 +12,56 @@
 \definecolor{darkblue}{rgb}{0, 0, 0.5}
 \hypersetup{colorlinks=true, citecolor=darkblue, linkcolor=darkblue, urlcolor=darkblue}
 
+\usepackage[most]{tcolorbox}
+\tcbuselibrary{listings,breakable}
+\usepackage{xcolor}
+
+\definecolor{PromptFrame}{HTML}{4B6584}   % 边框色
+\definecolor{PromptBack}{HTML}{F7F9FC}    % 背景色
+\definecolor{PromptTitle}{HTML}{1B1F3B}   % 标题文字色
+
+% 适合一小段文本的盒子（不用 verbatim）
+\newtcolorbox{promptbox}[2][]{%
+  enhanced,
+  breakable,
+  colback=PromptBack,
+  colframe=PromptFrame,
+  boxrule=0.4pt,
+  arc=1.5mm,
+  outer arc=1.5mm,
+  fonttitle=\bfseries,
+  coltitle=PromptTitle,
+  title={#2},
+  left=3mm, right=3mm, top=1.5mm, bottom=1.5mm,
+  attach boxed title to top left={xshift=2mm,yshift*=-2mm},
+  boxed title style={colback=white,arc=1mm,outer arc=1mm},
+  #1
+}
+
+% 适合直接粘贴完整 prompt（代码风、等宽字体）
+\newtcblisting{promptlisting}[2][]{%
+  enhanced,
+  breakable,
+  colback=PromptBack,
+  colframe=PromptFrame,
+  boxrule=0.4pt,
+  arc=1.5mm,
+  outer arc=1.5mm,
+  fonttitle=\bfseries,
+  coltitle=PromptTitle,
+  title={#2},
+  listing only,
+  listing options={
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true
+  },
+  left=3mm, right=3mm, top=1.5mm, bottom=1.5mm,
+  attach boxed title to top left={xshift=2mm,yshift*=-2mm},
+  boxed title style={colback=white,arc=1mm,outer arc=1mm},
+  #1
+}
 
 \title{Pessimistic Verification for Open Ended Math Questions}
 
@@ -93,9 +143,12 @@ In this work, we treat mathematical proof verification as a binary classificatio
 
 \begin{itemize}
   \item \textbf{True Negative Rate (TNR)}: The proportion of detected errors among all erroneous proofs. This is the primary metric for evaluating the model’s ability to identify incorrect proofs.
-  \item \textbf{True Positive Rate (TPR, recall)}: The proportion of proofs classified as correct among all truly correct proofs. This helps assess the model’s proof-verification capability.
-  \item \textbf{Precision}: The proportion of truly correct proofs among all proofs that the model classifies as correct. This measures the reliability of the model’s “correct” predictions.
-  \item \textbf{F1 Score}: The harmonic mean of precision and recall, providing a balanced indicator of performance when both false positives and false negatives matter.
+  \item \textbf{True Positive Rate (TPR)}: The proportion of proofs classified as correct among all truly correct proofs. This helps assess the model’s proof-verification capability.
+  \item \textbf{Balanced F1 Score}: The harmonic mean of TPR and TNR, providing a balanced indicator of performance when both false positives and false negatives matter. This is also the primary indicator used in \citet{pandit_hard2verify_2025}.
+\begin{equation}
+  \mathrm{Balanced\ F1} = \frac{2 \cdot \mathrm{TPR} \cdot \mathrm{TNR}}{\mathrm{TPR} + \mathrm{TNR}}
+  \label{eq:balanced-f1}
+\end{equation}
 \end{itemize}
 
 \subsection{Simple pessimistic verification}
@@ -136,7 +189,7 @@ The progressive verification approach naturally supports pruning. It can run eac
 
 \section{Experiments}
 
-\subsection{Datasets}
+\subsection{Datasets and settings}
 
 In our experiments we primarily use three datasets for evaluation, and we constantly use the same prompt and workflow setting across all these dataset. Here are some descriptions about them:
 
@@ -146,14 +199,14 @@ In our experiments we primarily use three datasets for evaluation, and we consta
   \item \textbf{QiuZhen-Bench}. This is a homemade collection of advanced math problems, with questions sourced from challenging university-level math competitions. It serves as a supplement to the previous two elementary math competition problem datasets. We randomly selected a subset of 300 problems, had them answered by GPT-5-mini, and used GPT-5 for labeling. This subset can be used to evaluate the performance of weaker models. You can refer to Appendix~\ref{sec:qiuzhen-bench} for more details.
 \end{itemize}
 
-All evaluation in our experiments was conducted at the response level, and for IMO-GradingBench, only the responses that obtained fully 7 points are considered correct, otherwise they will all be considered false. And aside from our experiments, we will simply use single pass verification as the baseline, since we already know that majority voting has almost no effect on evaluation.
+All evaluation in our experiments was conducted at the response level, and for IMO-GradingBench, only the responses that obtained fully 7 points are considered correct, otherwise they will all be considered false. And aside from our experiments, we will simply use single pass verification with different reasoning effort setting as the baseline, since we already know that majority voting has almost no effect on evaluation. In all our experiments we set the temperature parameter to 1.0 to ensure the diversity of the response.
 
 \subsection{Performance}
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=1.0\textwidth]{tnr_f1_comparison.pdf}
-  \caption{The main results under progressive pessimistic verification. Thinking mode is enabled for all models if possible, and the reasoning effort of gpt series model is set to medium. This method constantly improves the classification performance across all tested models.}
+  \caption{The main results on IMO-GradingBench. Thinking mode is enabled for all models if possible, and the reasoning effort of gpt series model is set to medium. This method constantly improves the classification performance across all tested models.}
   \label{fig:main-results}
 \end{figure}
 
@@ -190,7 +243,144 @@ We are also excited about the future works inspired by our pessimistic verificat
 
 \subsection{Detail in QiuZhen-Bench}\label{sec:qiuzhen-bench}
 
+QiuZhen-Bench is a dataset covering a wide range of topics in advanced math, including analysis, algebra, machine learning theory, geometry, topology, probability, statistics and theoretical physics. We have collected 143 exam papers from S.-T. Yau College Student Mathematics Contest since 2010, and the doctoral qualifying exams fron QiuZhen college, Tsinghua University since 2023, and required GPT-5 to extract and reformat problems directly from the PDF files. Manual spot checks did not reveal any errors in these extracted contents, indicating the strong capability of GPT-5 in doing this task. We firstly divide the exam papers into pages, and for each page we used the following prompt for extraction:
+
+\begin{promptlisting}{system prompt}
+You are a meticulous exam parsing assistant.
+Extract ALL distinct problems from the provided text chunks.
+Return ONLY valid JSON (no commentary). Focus on problem statements; exclude answers and solutions.
+\end{promptlisting}
+
+\begin{promptlisting}{user prompt}
+Task: Parse the following exam/contest page images to extract problem statements.
+Requirements:
+- Identify each separate problem with its number or index if present.
+- Preserve math using Markdown and LaTeX (inline `$...$`, display `$$...$$`).
+- Do not infer content; only use what appears in the images.
+- Only include problems written in English; skip non-English (e.g., Chinese).
+- If a problem is mixed-language, include only the English statement; otherwise skip.
+- If a problem spans multiple pages in this chunk, include the full statement.
+Output strictly as JSON array of objects with keys:
+  - problem_number: string (e.g., '1', 'II-3', 'A.1'; use 'unknown' if missing)
+  - markdown_statement: string (problem text in Markdown; no solution)
+  - section: string|null (e.g., 'Analysis', 'Geometry', or null)
+  - tags: array of strings (optional keywords, may be empty)
+  - source_pages: array of integers (page numbers within this PDF chunk)
+Return ONLY JSON.
+
+fSource: {source.rel_path}\nPages: {chunk.start_page}-{chunk.end_page}
+\end{promptlisting}
+
+The problems that spans across two pages is extracted by part and combined in the following processing logic. This results in a dataset containing 1,054 problems in total. Here we provide some samples from this dataset:
+
+\begin{promptbox}{Yau contest 2015, applied math}
+Let $G$ be graph of a social network, where for each pair of members there is either no connection, or a positive or a negative one.  An unbalanced cycle in $G$ is a cycle which have odd number of negative edges. Traversing along such a cycle with social rules such as friend of enemy are enemy would result in having a negative relation of one with himself!  A resigning in $G$ at a vertex $v$ of $G$ is to switch the type (positive or negative) of all edges incident to $v$.  Question: Show that one can switch all edge of $G$ into positive edges using a sequence resigning if and only if there is no unbalanced cycle in $G$.
+\end{promptbox}
+
+\begin{promptbox}{QiuZhen qualifying 2024 spring, theoretical physics}
+$\Pi_{\mu\nu}(q)$ via dimensional regularization (35 points)
+
+At one-loop, the photon propagator in QED receives the correction
+
+$$i\,\Pi_{\mu\nu}(q) = - \int \frac{d^4 p}{(2\pi)^4} \, \mathrm{Tr} \left( i\,\gamma^\nu \, \frac{i}{\not p + \not q - m} \, i\,\gamma^\mu \, \frac{i}{\not p - m} \right),$$
+
+where $\gamma_\mu$ is the gamma matrix and $\not p = p^\mu \gamma_\mu$.
+
+i) 10' Show that this expression can be written as
+
+$$i\,\Pi_{\mu\nu}(q) = -i \int \frac{d^4 p}{(2\pi)^4} \, \frac{N_{\mu\nu}}{D},$$
+
+where
+
+$$N_{\mu\nu} = \operatorname{tr}\,[\gamma_\nu(\not p + \not q + m)\gamma_\mu(\not p - m)]\,, \qquad \frac{1}{D} = \int_0^1 d\alpha \, \frac{1}{D},$$
+
+with
+
+$$D = \big[\,l^2 + \alpha(1-\alpha) q^2 - m^2 + i\epsilon\,\big]^2, \qquad \text{where } l = p + \alpha q.$$
+
+ii) 10' Evaluate $N_{\mu\nu}$ and shift momentum integration from $p$ to $l$ as above.
+
+iii) 10' At the integration step over $l$, perform dimensional regularization by promoting to a $d$-dimensional integral. Derive the expression
+
+$$\Pi_{\mu\nu}(q) = (q_\mu q_\nu - \eta_{\mu\nu} q^2)\,\Pi(q^2),$$
+
+when taking the limit $d \to 4$.
+
+iv) 5' Why does this result ensure gauge invariance?
+\end{promptbox}
+
+\begin{promptbox}{Yau contest 2019, analysis individual}
+Let $\Omega\subset\mathbb{R}^2$ be a bounded domain with smooth boundary. Prove that, for all $p>1$ and $1\le q<\infty$, for all $f\in L^p(\Omega)$, there exists a unique $u\in H_0^1(\Omega)$, such that $$\Delta u = |u|^{q-1}u + f \quad \text{in } \Omega.$$
+\end{promptbox}
+
+\begin{promptbox}{QiuZhen qualifying 2025 fall, algebra}
+Suppose $r \le n$ are positive integers. Let $X$ be the subset of $M(n \times n, \mathbb{C})$ consisting of complex $n \times n$ matrices with rank at most $r$. Prove that $X$ is Zariski closed. Find the number of irreducible components of $X$, and calculate the Krull dimension of each irreducible component of $X$.
+\end{promptbox}
+
 \subsection{Prompt template}
+
+In our experiments, we use the same evaluation prompt template across all these datasets. For standard, majority voting, and simple pessimistic verification, we use this single-pass verification prompt:
+
+\begin{promptlisting}{system prompt: single pass}
+You are an assistant highly proficient in mathematics.
+The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction.
+\end{promptlisting}
+
+\begin{promptlisting}{user prompt: single pass}
+Here is a math problem and a candidate solution of it, and you need to verify the correctness of this solution. Please check each of the following:
+
+1. The provided content is indeed a math problem and its corresponding solution, rather than unrelated material supplied by mistake.
+2. The solution actually derives the conclusion required by the original problem.
+3. Every step of calculation and formula derivation in the solution is correct.
+4. The hypotheses (conditions) and conclusions of any theorems used are correctly matched and applied.
+5. The solution relies only on the conditions given in the problem and does not introduce any additional assumptions to obtain the conclusion.
+
+Consistency and error-severity policy (important):
+- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the solution as correct overall but briefly note such issues.
+- If there is any critical error that undermines correctness (e.g., invalid step, wrong theorem usage without required conditions, uncorrected calculation error leading to a wrong result), treat the solution as incorrect.
+
+Response requirements: If the solution is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any.
+ If the solution is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error.
+ Do not include any restatement of the entire solution or problem.
+
+<problem>{problem}</problem>
+
+<answer>{solution}</answer>
+\end{promptlisting}
+
+The first step of progressive pessimistic verifier also adopts the single pass prompt, and for the following verification of subdivisions, we will use the following chunk verification prompt. This prompt is also used in vertical pessimistic verification in our experiments.
+
+\begin{promptlisting}{system prompt: chunk verification}
+You are an assistant highly proficient in mathematics.
+The user will provide a math problem together with its proposed solution, and your task is to verify the correctness of that solution according to the given instruction.
+\end{promptlisting}
+
+\begin{promptlisting}{user prompt: chunk verification}
+We provide the original problem and the complete proposed solution for full context. 
+Then we provide a specific chunk from the solution for focused checking. 
+Your task: Check ONLY the given chunk for errors while considering the overall context.
+
+Checklist:
+1. The chunk's reasoning and calculations adhere to mathematical correctness.
+2. Any theorems used in the chunk match their hypotheses and conclusions.
+3. The chunk does not rely on assumptions not justified by the problem or earlier proven steps.
+
+Consistency and error-severity policy (important):
+- If only minor, easily fixable issues exist (e.g., small algebraic slips later corrected, notational typos, superficial formatting), treat the chunk as correct overall but briefly note such issues.
+- If there is any critical error that undermines correctness in this chunk (e.g., invalid step, wrong theorem usage without required conditions), treat the chunk as incorrect.
+
+Response requirements: If the chunk is correct overall (possibly with minor issues), reply with `<verification>true</verification>` and briefly list minor issues if any. 
+If the chunk is incorrect, reply with `<verification>false</verification>` followed by a concise description of the most harmful error in the proof that you found in the chunk.
+
+f<problem>{problem}</problem>
+
+f<full_answer>{full_proof}</full_answer>
+
+f<chunk_index>{idx}</chunk_index>
+f<chunk>{chunk}</chunk>
+\end{promptlisting}
+
+\subsection{Original data in experiments}
 
 \subsection{More detailed case studies}
 
