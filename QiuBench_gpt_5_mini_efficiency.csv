@@ -46,14 +46,14 @@ vertical pessimistic, vp@24,
 vertical pessimistic, vp@28,
 vertical pessimistic, vp@32,
 vertical pessimistic, vp@36,
-progressive, progressive@1/4,188,40,71,1,300,2549.63,2068.16
-progressive, progressive@2/4,188,51,60,1,818,2178.15,1631.21
-progressive, progressive@3/4,187,65,46,2,1796,1916.38,1267.31
-progressive, progressive@4/4,182,78,33,7,3343,1802.05,1036.74
-progressive, progressive@5/4,175,86,25,14,5151,1770.09,909.77
+progressive, progressive@1/4,184,26,85,5,300,1561.68,2031.31
+progressive, progressive@2/4,183,48,63,6,837,1832.36,1628.39
+progressive, progressive@3/4,182,65,46,7,1758,1785.35,1316.09
+progressive, progressive@4/4,178,79,32,11,3001,1782.98,1117.06
+progressive, progressive@5/4,176,85,26,13,4270,1797.69,1010.31,
 
 progressive low, progressive@1/4,185,22,89,4,300,1561.68,598.15
 progressive low, progressive@2/4,183,42,69,6,847,1852.06,554.60
-progressive low, progressive@3/4,180,58,53,9,1796.98,475.09
+progressive low, progressive@3/4,180,58,53,9,1795,1796.98,475.09
 progressive low, progressive@4/4,177,70,41,12,3053,1771.68,422.06
 progressive low, progressive@5/4,175,77,34,14,4344,1769.1,393.41,

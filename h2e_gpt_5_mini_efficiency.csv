@@ -18,6 +18,20 @@ simple pessimistic,pes@10,39,126,32,3,200,2422.05,2630.27375
 simple pessimistic,pes@11,39,127,31,3,200,2422.05,2630.27375
 simple pessimistic,pes@12,39,129,29,3,200,2422.05,2630.27375
 
+simple pessimistic low,pes@1,42,87,71,0,200,2422.05,683.82
+simple pessimistic low,pes@2,42,97,61,0,400,2422.05,683.82
+simple pessimistic low,pes@3,42,102,56,0,600,2422.05,683.82
+simple pessimistic low,pes@4,42,105,53,0,800,2422.05,683.82
+simple pessimistic low,pes@5,41,107,51,1,1000,2422.05,683.82
+simple pessimistic low,pes@6,41,107,51,1,1200,2422.05,683.82
+simple pessimistic low,pes@7,41,112,46,1,1400,2422.05,683.82
+simple pessimistic low,pes@8,40,112,46,2,1600,2422.05,683.82
+simple pessimistic low,pes@9,40,113,45,2,1800,2422.05,683.82
+simple pessimistic low,pes@10,40,115,43,2,2000,2422.05,683.82
+simple pessimistic low,pes@11,39,116,42,3,2200,2422.05,683.82
+simple pessimistic low,pes@12,39,118,40,3,2400,2422.05,683.82
+
+
 vertical pessimistic,vp@4,
 vertical pessimistic,vp@8,
 vertical pessimistic,vp@12,40,121,37,2,923,4157.77,1429.8
@@ -32,3 +46,9 @@ progressive, progressive@1/6,40,108,50,2,200,4333.035,2710.01
 progressive, progressive@2/6,39,124,34,3,377,3661.48,2283.09
 progressive, progressive@3/6,38,133,25,4,644,3163.45,1805.95
 progressive, progressive@4/6,37,140,18,5,989,2923.73,1496.86
+
+
+progressive low, progressive@1/6,41,94,64,1,200,2422.05,708.285
+progressive low, progressive@2/6,41,114,44,1,407,2757.64,682.64
+progressive low, progressive@3/6,40,126,32,2,716,2691.81,600.61
+progressive low, progressive@4/6,37,131,27,5,1095,2661.25,532.33,
