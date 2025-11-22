@@ -388,10 +388,10 @@ In this section we primarily focus on the false negative cases reported by diffe
 
 \subsubsection{False negative examples on IMO-GradingBench}
 
-\begin{promptbox}{case1: problem}
+\begin{promptbox}{Case1: problem}
 For a positive integer $n$, let $A_{n}$ be the number of perfect powers less than or equal to $n$. Here, a perfect power is a number that can be expressed in the form $a^{b}$, where $a$ is a positive integer and $b$ is an integer greater than or equal to 2. Prove that there are infinitely many $n$ such that $A_{n}$ divides $n+2024$.
 \end{promptbox}
-\begin{promptbox}{case1: proof}
+\begin{promptbox}{Case1: proof}
 Let $S$ be the set of perfect powers. A perfect power is a positive integer that can be expressed in the form $a^b$, where $a$ is a positive integer and $b$ is an integer greater than or equal to 2. The set of perfect powers, sorted in increasing order, is $\{1, 4, 8, 9, 16, 25, 27, \dots\}$.
 For a positive integer $n$, $A_n$ is the number of perfect powers less than or equal to $n$. So, $A_n = |S \cap \{1, 2, \dots, n\}|$.
 The function $A_n$ is a non-decreasing step function. It is constant between consecutive perfect powers. Let $p_k$ denote the $k$-th perfect power. For any integer $n$ in the range $p_k \le n < p_{k+1}$, the value of $A_n$ is constant and equal to $k$.
@@ -502,7 +502,7 @@ Therefore, there are infinitely many integers $n$ such that $A_n$ divides $n+202
 
 The manually annotated label in the dataset is true (7 points), while our method found a critical error in it:
 
-\begin{promptbox}{case1: review from GPT-5-mini}
+\begin{promptbox}{Case1: review from GPT-5-mini}
 <verification>false</verification>
 
 The main (fatal) error is in Claim~1: the author replaces the integer count
@@ -519,15 +519,333 @@ does not follow. Because of this mistake the proof does not establish that the o
 interval \(\bigl((m-1)^2,m^2\bigr)\) contains no perfect powers for all large \(m\), and
 the rest of the argument (which depends critically on that claim) fails.
 \end{promptbox}
-\begin{promptbox}{case1: our comment}
+\begin{promptbox}{Case1: our comment}
 The gt\_label is wrong, the pred\_label is correct.
 
-Fatal error in Claim 1: It is invalid to use the length of a real interval to upper-bound the number of integer points, because when the interval length is < 1 it may still contain integers. Therefore, the conclusion ``limit = 0 => final result = 0'' does not hold; Claim 1 has not been proved and the proof fails.
+Fatal error in Claim 1: It is invalid to use the length of a real interval to upper-bound the number of integer points, because when the interval length is < 1 it may still contain integers. Therefore, the conclusion ``limit = 0 => final result = 0'' does not hold; Moreover, the proof has a totally wrong derivation that
 
 $$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( \lfloor m^{2/j} \rfloor - \lceil (m-1)^{2/j} \rceil + 1 \right)$$
-A simpler bound is the sum of the lengths of the intervals for (x):
-$$N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( m^{2/j} - (m-1)^{2/j} \right)$$
-This part is incorrect.
+$$\Rightarrow N((m-1)^2, m^2) \le \sum_{j=3}^{\lfloor 2\log_2 m \rfloor} \left( m^{2/j} - (m-1)^{2/j} \right)$$
+
+which is actually an unacceptable gap.
 \end{promptbox}
+
+\begin{promptbox}{Case2: problem}
+  Prove that there exist two real-coefficient polynomials $P(x)$ and $Q(x)$ satisfying the following condition:
+  
+  (Condition) The degree of the polynomial $P(x)$ is at least 2024, the degree of $Q(x)$ is at least 2, and for any real number $x$, the following holds:
+  \[ P(Q(x)-x-1)=Q(P(x))\]
+\end{promptbox}
+
+\begin{promptbox}{Case2: proof}
+  We will prove the existence of such polynomials $P(x)$ and $Q(x)$ by constructing them. Our construction will follow three main steps:
+1. Find a pair of polynomials of low degree, let's call them $(P_0(x), Q_0(x))$, that satisfies the given functional equation.
+2. Construct a high-degree polynomial, let's call it $R(x)$, that commutes with $Q_0(x)$.
+3. Combine these polynomials to form the final pair $(P(x), Q(x))$ that satisfies all the given conditions.
+
+Let the given equation be
+\[P(Q(x)-x-1) = Q(P(x)) \quad (*).\]
+
+\textbf{Step 1: Finding a base solution pair}
+
+We look for a simple solution where $P_0(x)$ and $Q_0(x)$ have degree 2. Let's try to relate them. A simple assumption is that $Q_0(x)$ is a linear perturbation of $P_0(x)$. Let's try the ansatz:
+\[Q_0(x) = P_0(x) + x + c\]
+for some real constant $c$.
+Substituting this into the equation $(*)$:
+The left side's argument becomes $Q_0(x)-x-1 = (P_0(x)+x+c) - x - 1 = P_0(x)+c-1$.
+So the equation becomes $P_0(P_0(x)+c-1) = Q_0(P_0(x))$.
+
+Let $y = P_0(x)$. For any value $y$ in the range of $P_0(x)$, the equation must hold:
+\[P_0(y+c-1) = Q_0(y).\]
+Using our ansatz for $Q_0(y)$, we have $Q_0(y) = P_0(y) + y + c$.
+So, we obtain a functional equation for $P_0(y)$:
+\[P_0(y+c-1) = P_0(y) + y + c.\]
+Let $b = c-1$, so $c = b+1$. The equation is
+\[P_0(y+b) - P_0(y) = y+b+1.\]
+Let $m = \deg(P_0)$. If $b \neq 0$, the degree of the polynomial on the left, $P_0(y+b) - P_0(y)$, is $m-1$. The degree of the polynomial on the right is 1.
+For the identity to hold, the degrees must be equal, so $m-1 = 1$, which implies $m=2$.
+
+Let $P_0(y) = Ay^2+By+C$ for some constants $A, B, C \in \mathbb{R}$ with $A \
+eq 0$.
+Substituting this into the difference equation:
+$A(y+b)^2+B(y+b)+C - (Ay^2+By+C) = y+b+1$
+$A(y^2+2by+b^2)+B(y+b)+C - =Ay^2-By-C = y+b+1$
+$2Aby + Ab^2+Bb = y+b+1$.
+This must be a polynomial identity in $y$. We can equate the coefficients of the powers of $y$:
+1. Coefficient of $y$: $2Ab = 1$.
+2. Constant term: $Ab^2+Bb = b+1$.
+
+This is a system of two equations with three unknowns ($A, B, b$). We can choose a value for one of them. Let's choose $b=2$.
+From (1): $2A(2) = 1 \implies 4A=1 \implies A=1/4$.
+Substitute $A=1/4$ and $b=2$ into (2):
+$(1/4)(2^2) + B(2) = 2+1 \implies 1+2B = 3 \implies 2B=2 \implies B=1$.
+The constant $C$ can be any real number. For simplicity, we choose $C=0$.
+So, we have found a polynomial $P_0(x) = \frac{1}{4}x^2+x$.
+We have $b=2$, so $c=b+1=3$.
+Now we find the corresponding $Q_0(x)$:
+$Q_0(x) = P_0(x)+x+c = (\frac{1}{4}x^2+x) + x + 3 = \frac{1}{4}x^2+2x+3$.
+
+So, we have found a base solution pair:
+$P_0(x) = \frac{1}{4}x^2+x$
+$Q_0(x) = \frac{1}{4}x^2+2x+3$
+Both have degree 2, satisfying the degree condition for $Q_0(x)$. Let's verify that they satisfy $(*)$.
+$Q_0(x)-x-1 = (\frac{1}{4}x^2+2x+3)-x-1 = \frac{1}{4}x^2+x+2$.
+LHS: $P_0(Q_0(x)-x-1) = P_0(\frac{1}{4}x^2+x+2) = \frac{1}{4}(\frac{1}{4}x^2+x+2)^2 + (\frac{1}{4}x^2+x+2) = \frac{1}{64}x^4+\frac{1}{8}x^3+\frac{3}{4}x^2+2x+3$.
+RHS: $Q_0(P_0(x)) = \frac{1}{4}(P_0(x))^2+2P_0(x)+3 = \frac{1}{4}(\frac{1}{4}x^2+x)^2 + 2(\frac{1}{4}x^2+x)+3 = \frac{1}{64}x^4+\frac{1}{8}x^3+\frac{3}{4}x^2+2x+3$.
+LHS=RHS, so the pair $(P_0, Q_0)$ is a solution.
+
+\textbf{Step 2: Construction of a high-degree commuting polynomial}
+
+Our plan is to set $Q(x) = Q_0(x)$ and $P(x) = R(P_0(x))$ for some polynomial $R(x)$ with high degree. Let's see what condition $R(x)$ must satisfy.
+Substitute $P(x)=R(P_0(x))$ and $Q(x)=Q_0(x)$ into $(*)$:
+LHS: $P(Q(x)-x-1) = R(P_0(Q_0(x)-x-1))$.
+Using the property of our base solution, $P_0(Q_0(x)-x-1)=Q_0(P_0(x))$, we get:
+LHS = $R(Q_0(P_0(x)))$.
+RHS: $Q(P(x)) = Q_0(R(P_0(x)))$.
+So, the equation becomes $R(Q_0(P_0(x))) = Q_0(R(P_0(x)))$.
+Let $y=P_0(x)$. This identity must hold for all values $y$ in the range of $P_0$. If we find a polynomial $R$ that commutes with $Q_0$, i.e., $R(Q_0(y)) = Q_0(R(y))$ for all $y$, then our equation will be satisfied. Since this is a polynomial identity, if it holds for all $y$ in the range of $P_0$ (an infinite set), it holds for all $y$.
+
+We need to find a polynomial $R(x)$ that commutes with $Q_0(x)$. A standard method for finding commuting polynomials is to simplify $Q_0(x)$ by a linear change of variables (conjugation).
+$Q_0(x) = \frac{1}{4}x^2+2x+3 = \frac{1}{4}(x^2+8x) + 3 = \frac{1}{4}(x^2+8x+16) - 4+3 = \frac{1}{4}(x+4)^2 - 1$.
+Let $L(x) = x+4$. Its inverse is $L^{-1}(x) = x-4$.
+Let $S(y) = \frac{1}{4}y^2-1$.
+Then $Q_0(x) = L^{-1}(S(L(x)))$.
+
+If we find a polynomial $\tilde{R}(y)$ that commutes with $S(y)$, then $R(x) = L^{-1}(\tilde{R}(L(x)))$ will commute with $Q_0(x)$. This is because:
+$R(Q_0(x)) = L^{-1}(\tilde{R}(L(L^{-1}(S(L(x)))))) = L^{-1}(\tilde{R}(S(L(x))))$.
+$Q_0(R(x)) = L^{-1}(S(L(L^{-1}(\tilde{R}(L(x)))))) = L^{-1}(S(\tilde{R}(L(x))))$.
+Since $\tilde{R}$ and $S$ commute, $\tilde{R}(S(y))=S(\tilde{R}(y))$, so $R$ and $Q_0$ commute.
+
+A simple way to find a polynomial that commutes with $S(y)$ is to take iterates of $S(y)$. Let $S_1(y) = S(y)$ and $S_k(y) = S(S_{k-1}(y))$ for $k \ge 2$. Then $S_k(y)$ commutes with $S(y)$ for any $k \ge 1$.
+Let's choose $\tilde{R}(y) = S_k(y)$ for a sufficiently large $k$.
+The degree of $S(y)$ is 2. The degree of $\tilde{R}(y)=S_k(y)$ is $2^k$.
+We define $R(x) = L^{-1}(S_k(L(x))) = S_k(x+4)-4$. The degree of $R(x)$ is $2^k$.
+
+\textbf{Step 3: Assembling the final solution}
+
+We are now ready to define $P(x)$ and $Q(x)$.
+- Let $Q(x) = Q_0(x) = \frac{1}{4}x^2+2x+3$.
+- Let $R(x)$ be constructed with $k=10$, so $\tilde{R}(y) = S_{10}(y) = S^{\circ 10}(y)$, and $R(x) = S_{10}(x+4)-4$.
+- Let $P(x) = R(P_0(x)) = R(\frac{1}{4}x^2+x)$.
+
+Let's check the conditions:
+1. **Coefficients**: $P_0, Q_0, L, L^{-1}, S$ are all real-coefficient polynomials. Any composition or iteration will also result in polynomials with real coefficients. So $P(x)$ and $Q(x)$ have real coefficients.
+
+2. **Degree of Q(x)**: $\deg(Q) = \deg(Q_0) = 2$. This satisfies $\deg(Q) \ge 2$.
+
+3. **Degree of P(x)**: The degree of $P(x)$ is the product of the degrees of $R(x)$ and $P_0(x)$.
+ $\deg(P_0) = 2$.
+ $\deg(R) = \deg(S_{10}) = 2^{10} = 1024$.
+ $\deg(P) = \deg(R) \cdot \deg(P_0) = 1024 \cdot 2 = 2048$.
+ We need $\deg(P) \ge 2024$. Our value $2048$ satisfies this condition.
+ (If we needed an even higher degree, we could just choose a larger $k$. For instance, $k=11$ would give $\deg(P)=4096$.)
+
+4. **The functional equation**: As shown in Step 2, the choice $P(x)=R(P_0(x))$ and $Q(x)=Q_0(x)$ reduces the equation $(*)$ to $R(Q_0(P_0(x))) = Q_0(R(P_0(x)))$. Our construction of $R(x)$ ensures it commutes with $Q_0(x)$, so this identity holds for all inputs, and thus for all real numbers $x$.
+
+We have successfully constructed polynomials $P(x)$ and $Q(x)$ that satisfy all the required conditions.
+For completeness, the polynomials are:
+- $Q(x) = \frac{1}{4}x^2+2x+3$.
+- $P(x) = S_{10}(\frac{1}{4}x^2+x+4)-4$, where $S(y) = \frac{1}{4}y^2-1$ and $S_{10}$ is the 10th iterate of $S(y)$.
+
+This completes the proof that such polynomials exist.
+\end{promptbox}
+
+\begin{promptbox}{Case2: review from GPT-5-mini}
+  <verification>false</verification>
+  The fatal error is in Step 2: the author claims  $ Q_0(x) = L^{-1}(S(L(x))) $  with  $ L(x)=x+4 $  and then uses this to conclude that  $ R(x)=L^{-1}(S_k(L(x)))  $ commutes with  $ Q_0 $  whenever  $ S_k $  commutes with S. But  $ Q_0(x)=1/4(x+4)^2- $ 1 equals  $ S(L(x)) $, not  $ L^{-1}(S(L(x))) $. That mistaken conjugation breaks the commuting argument: the equality  $ R(Q_0(x)) = Q_0(R(x)) $  does not follow from  $ S_k\circ S = S\circ S_k $  under the provided definitions, and the displayed  $ R(x)=S_k(x+4)-4 $  need not commute with  $ Q_0 $. (Thus the key commuting-polynomial construction is invalid as written.)
+\end{promptbox}
+
+The manually annotated label in the dataset is true (7 points), while our method found a typo in it:
+
+\begin{promptbox}{Case2: our comment}
+  The review fromi GPT-5-mini actually points out a typo that  $ Q_0(x)\neq L^{-1}(S(L(x))) $. However, the choice of  $ S $ does not really matter so we can fix the proof easily.  
+\end{promptbox}
+
+\begin{promptbox}{Case3: problem}
+  Prove that there exist two real-coefficient polynomials $P(x)$ and $Q(x)$ satisfying the following condition:
+
+ (Condition) The degree of the polynomial $P(x)$ is at least 2024, the degree of $Q(x)$ is at least 2, and for any real number $x$, the following holds:
+
+ \[
+ P(Q(x)-x-1)=Q(P(x))
+ \]
+\end{promptbox}
+\begin{promptbox}{Case3: proof}
+  Let $n=2024$. We are looking for real-coefficient polynomials $P(x)$ and $Q(x)$ such that $\deg(P) \ge n$ and $P(Q(x)-x-1)=Q(P(x))$ for all real $x$.
+
+Let $\deg(P)=d_P$ and $\deg(Q)=d_Q$.
+Comparing the degrees of both sides of the equation $P(Q(x)-x-1)=Q(P(x))$, we have
+$\deg(Q(P(x)))=d_Q d_P$.
+$\deg(P(Q(x)-x-1))=d_P \deg(Q(x)-x-1)$.
+If $d_Q>1$, $\deg(Q(x)-x-1)=d_Q$, so $\deg(P(Q(x)-x-1))=d_P d_Q$.
+If $d_Q=1$, let $Q(x)=cx+d$ with $c \
+e 0$. Then $Q(x)-x-1=(c-1)x+d-1$.
+If $c \
+e 1$, $\deg(Q(x)-x-1)=1=d_Q$, so $\deg(P(Q(x)-x-1))=d_P \cdot 1=d_P$. The degree of $Q(P(x))$ is $1 \cdot d_P=d_P$.
+If $c=1$, $Q(x)=x+d$. $Q(x)-x-1=d-1$. $\deg(P(Q(x)-x-1))=\deg(P(d-1))=0$. The degree of $Q(P(x))=P(x)+d$ is $d_P$. For $0=d_P$, $P(x)$ must be a constant. Let $P(x)=k$. Then $P(Q(x)-x-1)=k$ and $Q(P(x))=Q(k)=k+d$. So $k=k+d \implies d=0$. $Q(x)=x$. In this case $P(Q(x)-x-1)=P(-1)$ and $Q(P(x))=P(x)$. So $P(x)$ must be a constant $k$ such that $P(-1)=k$. This works, but we need $d_P \ge 2024$.
+So we must have $d_Q \ge 1$ and $c \
+e 1$ if $d_Q=1$.
+
+Let's try to find a solution with $d_Q=1$. Let $Q(x)=cx+d$ with $c \
+e 1$.
+The condition is $P((c-1)x+d-1)=c P(x)+d$.
+Let $d_P=n=2024$. Let $P(x)=a_n x^n+\dots+a_0$ with $a_n \
+e 0$.
+Comparing the leading coefficients, $a_n((c-1)x)^n+\dots=c(a_n x^n)+\dots$.
+$a_n(c-1)^n x^n+\dots=c a_n x^n+\dots$.
+Since $a_n \
+e 0$, we must have $(c-1)^n=c$.
+Let $n=2024$. We need to show that there exists a real number $c \
+e 1$ such that $(c-1)^{2024}=c$.
+Consider the function $f(t)=(t-1)^{2024}-t$ for $t \in \mathbb{R}$. $f(t)$ is continuous.
+$f(0)=(0-1)^{2024}-0=1>0$.
+$f(1)=(1-1)^{2024}-1=-1<0$.
+By the Intermediate Value Theorem, there exists $c_1 \in (0,1)$ such that $f(c_1)=0$. Since $c_1 \in (0,1)$, $c_1 \
+e 1$.
+$f(3)=(3-1)^{2024}-3=2^{2024}-3>0$.
+By the Intermediate Value Theorem, there exists $c_2 \in (1,3)$ such that $f(c_2)=0$. Since $c_2 \in (1,3)$, $c_2 \
+e 1$.
+Let $c$ be any such real root. For example, $c=c_1$ or $c=c_2$.
+Now we need to find a polynomial $P(x)$ of degree $n=2024$ satisfying $P((c-1)x+d-1)=c P(x)+d$ for some $d$.
+Let's try $d=1$. We need $P((c-1)x)=c P(x)+1$.
+Let $P(x)=ax^n+b$.
+$a((c-1)x)^n+b=c(ax^n+b)+1$.
+$a(c-1)^n x^n+b=acx^n+cb+1$.
+$acx^n+b=acx^n+cb+1$.
+This requires $b=cb+1$, so $b(1-c)=1$. Since $c \
+e 1$, we can choose $b=\frac{1}{1-c}$.
+Let $a=1$. Then $P(x)=x^n+\frac{1}{1-c}$ is a polynomial of degree $n=2024$.
+Let $P(x)=x^{2024}+\frac{1}{1-c}$ and $Q(x)=cx+1$.
+$P(x)$ has degree $2024 \ge 2024$. $P(x)$ and $Q(x)$ have real coefficients since $c$ is real.
+Let's verify the condition:
+$P(Q(x)-x-1)=P(cx+1-x-1)=P((c-1)x)=((c-1)x)^{2024}+\frac{1}{1-c}=(c-1)^{2024}x^{2024}+\frac{1}{1-c}=cx^{2024}+\frac{1}{1-c}$.
+$Q(P(x))=c P(x)+1=c(x^{2024}+\frac{1}{1-c})+1=cx^{2024}+\frac{c}{1-c}+1=cx^{2024}+\frac{c+1-c}{1-c}=cx^{2024}+\frac{1}{1-c}$.
+The condition $P(Q(x)-x-1)=Q(P(x))$ is satisfied.
+Thus, such polynomials $P(x)$ and $Q(x)$ exist.
+
+Final Answer: The final answer is $\boxed{P(x) \text{ and } Q(x) \text{ exist}}$
+\end{promptbox}
+
+
+\begin{promptbox}{Case3: review from qwen3-30b-a3b}
+  <verification>false</verification>  
+The solution incorrectly constructs $ Q(x) $ as a linear polynomial (degree 1), violating the problem's requirement that $ \deg(Q) \geq 2 $. This critical error undermines the correctness of the solution.
+\end{promptbox}
+
+The manually annotated label in the dataset is true (7 points), while our method found a critical error in it:
+
+\begin{promptbox}{Case3: our comment}
+   $ \deg(Q) $ has to be at least  $ 2 $ so this construction cannot be accepted. 
+\end{promptbox}
+
+\begin{promptbox}{Case4: problem}
+  There are 120 students in DeepMind highschool, and each student `loves' some of the students. Here `love' is not always a mutual relationship; a student A may love B while B may not love A, and it is also possible that a student loves oneself. For the set $F$ of all $2^{120}$ subsets of the students, define the function $f: F \rightarrow F$ as the function that maps each $X \in F$ to the set of students loved by one or more students in $X$. For $A, B \in F$, $A$ and $B$ are said to have a 'lovely relationship' iff there exists a natural number $k$ such that $f^{k}(A)=B$. Now we want to select distinct elements $A_{1}, A_{2}, \cdots A_{t}$ from $F$ such that for any $1 \leq i<j \leq t$, $A_{i}$ and $A_{j}$ have a lovely relationship. Let $M(f)$ be the maximum possible value of $t$.  Show that $M(f) \leq 2^{70}$. ",
+  "proof": "Let $S$ be the set of 120 students, and $F = 2^S$ be the power set of $S$. The function $f: F \rightarrow F$ is defined as $f(X) = \bigcup_{u \in X} N(u)$, where $N(u)$ is the set of students loved by student $u$. This defines a directed graph $G=(S,E)$ where $(u,v) \in E$ if $u$ loves $v$.
+\end{promptbox}
+
+\begin{promptbox}{Case4: proof}
+  The function $f$ is a linear map over the vector space $\mathbb{F}_2^{120}$, where subsets are identified with their characteristic vectors. The union operation corresponds to vector addition.
+
+A 'lovely relationship' between two sets $A, B \in F$ means that one can be reached from the other by repeated application of $f$. A collection of distinct sets $\{A_1, \dots, A_t\}$ where any pair has a lovely relationship must form a chain under this reachability relation. We can reorder these sets to form a simple path in the functional graph of $f$. The maximum possible value of $t$, denoted $M(f)$, is the length of the longest such path. A maximal path can be written as $A_0, A_1, \ldots, A_{t-1}$, where $A_{i+1} = f(A_i)$ for $i=0, \ldots, t-2$, and all $A_i$ are distinct.
+
+Our proof strategy is to analyze the structure of the graph $G$ by decomposing it into a \"core\" part and an \"acyclic\" part. We will use the properties of the iterates of $f$ on the whole set $S$.
+
+Let $L_0 = S$, and define a sequence of subsets $L_k = f^k(S)$ for $k \ge 1$.
+The function $f$ is monotone, i.e., if $X \subseteq Y$, then $f(X) \subseteq f(Y)$.
+Since $L_1 = f(S) \subseteq S = L_0$, monotonicity implies $f(L_1) \subseteq f(L_0)$, so $L_2 \subseteq L_1$.
+This gives a descending chain of subsets:
+$S = L_0 \supseteq L_1 \supseteq L_2 \supseteq \cdots$.
+
+Since $S$ is finite, this sequence must stabilize. Let $p$ be the first integer such that $L_p = L_{p+1}$.
+Let $C_f = L_p$. This is the \"image core\" of the graph under $f$.
+From $L_{p+1} = f(L_p)$, the stability condition $L_p = L_{p+1}$ means $f(C_f) = C_f$.
+This implies that the function $f$, when restricted to the set $C_f$, acts as a permutation on the elements of $C_f$. Let's call this permutation $\pi$.
+Let $x \in C_f$. Since $f(C_f)=C_f$, every element in $C_f$ must have at least one preimage in $C_f$. Since $C_f$ is finite, this means $f$ restricted to the elements of $C_f$ is a bijection, i.e., a permutation $\pi$.
+This implies that for each $x \in C_f$, its neighborhood $N(x)$ must be a singleton set $\{\pi(x)\}$, and $\pi(x) \in C_f$.
+
+Now we analyze the structure of any trajectory $A_0, A_1, \ldots, A_{t-1}$.
+Let $m$ be the first index in the sequence such that $A_m$ is a subset of $C_f$. So $A_i \
+ot\subseteq C_f$ for $i<m$, and $A_m \subseteq C_f$.
+
+The property $f(C_f) = C_f$ implies that for any $u \in C_f$, $N(u) \subseteq C_f$.
+Let $X \subseteq C_f$. Then $f(X) = \bigcup_{u \in X} N(u) \subseteq C_f$.
+This means that once a set in the trajectory is a subset of $C_f$, all subsequent sets in the trajectory are also subsets of $C_f$. So $A_i \subseteq C_f$ for all $i \ge m$.
+The total length of the trajectory is $t = m + (t-m)$. The first part of the trajectory has length $m$, and the second part has length $t-m$. The two parts are disjoint because sets in the first part are not subsets of $C_f$, while sets in the second part are.
+
+Let's bound the length of the pre-core part of the trajectory, $m$.
+Let $U = S \setminus C_f$. For $i<m$, $A_i \cap U \
+e \emptyset$.
+Let $A_i^U = A_i \cap U$ and $A_i^C = A_i \cap C_f$.
+$A_{i+1} = f(A_i) = f(A_i^C \cup A_i^U) = f(A_i^C) \cup f(A_i^U)$.
+Since $N(C_f) \subseteq C_f$, we have $f(A_i^C) \subseteq C_f$.
+Therefore, the part of $A_{i+1}$ outside the core is determined solely by the part of $A_i$ outside the core:
+$A_{i+1}^U = A_{i+1} \cap U = (f(A_i^C) \cup f(A_i^U)) \cap U = f(A_i^U) \cap U$.
+The sequence of non-core parts $(A_i^U)_{i \ge 0}$ evolves autonomously.
+
+The set $C_f = L_p = \bigcap_{k \ge 0} L_k$ consists of all vertices that can be reached by paths of arbitrary length from $S$. This means any vertex not in $C_f$ cannot reach a cycle. The subgraph $G[U]$ induced by $U = S \setminus C_f$ must be a Directed Acyclic Graph (DAG).
+
+Let $v_1, v_2, \ldots, v_{|U|}$ be a topological sort of the vertices in $U$. For any edge $(v_i, v_j)$ in $G[U]$, we have $i < j$.
+For any non-empty subset $Y \subseteq U$, define its rank as $\min_r(Y) = \min\{i \mid v_i \in Y\}$.
+Let $Y_i = A_i^U$. Suppose $Y_i \
+e \emptyset$. Let $j = \min_r(Y_i)$.
+$Y_{i+1} = f(Y_i) \cap U = \bigcup_{u \in Y_i} (N(u) \cap U)$.
+Any vertex $w \in N(v_j) \cap U$ must have an index greater than $j$. The same applies to any other $u \in Y_i$ with index greater than $j$.
+Thus, for any vertex in $Y_{i+1}$, its index in the topological sort is greater than $j$.
+This means $\min_r(Y_{i+1}) > \min_r(Y_i)$.
+The sequence of ranks $\min_r(A_0^U), \min_r(A_1^U), \ldots$ is strictly increasing as long as the sets are non-empty.
+Since the rank is at most $|U|$, the sequence of non-empty sets $(A_i^U)$ can have length at most $|U|$.
+$A_{m-1}^U \
+e \emptyset$ and $A_m^U = \emptyset$. So $m \le |U|$.
+Let $k = |C_f|$. Then $|U|=120-k$. We have $m \le 120-k$.
+
+Now let's bound the length of the core part of the trajectory, $t-m$.
+For $i \ge m$, the sets $A_i$ are subsets of $C_f$.
+As we established, for any $x \in C_f$, $N(x) = \{\pi(x)\}$ where $\pi$ is a permutation of $C_f$.
+So, for any $X \subseteq C_f$, $f(X) = \bigcup_{x \in X} \{\pi(x)\} = \pi(X)$.
+The trajectory for $i \ge m$ is given by $A_{i+1} = \pi(A_i)$.
+The sequence is $A_m, \pi(A_m), \pi^2(A_m), \ldots, A_{t-1}$.
+Since these sets must be distinct, the length $t-m$ is bounded by the order of the permutation $\pi$ in the symmetric group on $2^{C_f}$. This is the order of the element $A_m$. The maximum length is the maximum cycle length in the permutation group induced by $\pi$ on $2^{C_f}$. This is bounded by the order of $\pi$ acting on $C_f$.
+The order of $\pi \in S_k$ is the least common multiple (lcm) of the lengths of its disjoint cycles. The maximum possible order for a permutation of $k$ elements is given by Landau's function $g(k)$, defined as $g(k) = \max_{n_1+\cdots+n_r=k} \text{lcm}(n_1, \ldots, n_r)$.
+So, $t-m \le g(k)$.
+
+Combining the bounds for both parts, we get:
+$t = m + (t-m) \le (120-k) + g(k)$.
+
+We need to find an upper bound for $h(k) = 120-k+g(k)$ for $k \in \{0, 1, \ldots, 120\}$.
+Landau's function $g(k)$ grows subexponentially. The asymptotic growth is $\ln g(k) \sim \sqrt{k \ln k}$.
+Let's check some values:
+$h(0) = 120-0+g(0) = 120+1 = 121$ (a trajectory on $\emptyset$ has length 1).
+$h(1) = 120-1+g(1) = 119+1 = 120$.
+$h(10) = 110+g(10) = 110+\text{lcm}(2,3,5) = 110+30 = 140$.
+$h(20) = 100+g(20) = 100+\text{lcm}(3,4,5,7) = 100+420 = 520$.
+$h(40) = 80+g(40) = 80+\text{lcm}(3,5,7,8,11) = 80+9240 = 9320$.
+$h(70) = 50+g(70)$. $g(70)=\text{lcm}(3,4,5,7,11,13,17)=1161160$. $h(70) = 1161210$.
+For $k=120$, $h(120) = g(120)$. A partition of 120 into prime powers that gives a large lcm is $3,4,5,7,11,13,17,19,23$. The sum is 102. Remaining 18. Add 1. $g(102)$ is huge. For $k=120$, $g(120)$ is known to be $\approx 3.2 \times 10^{10}$.
+
+In all cases, the value of $h(k)=120-k+g(k)$ is significantly smaller than $2^{70}$.
+$2^{10} \approx 10^3$. $2^{70} = (2^{10})^7 \approx (10^3)^7 = 10^{21}$.
+The maximum value of $h(k)$ for $k \in [0, 120]$ is many orders of magnitude smaller than $2^{70}$.
+Therefore, we have shown that for any graph $G$, $M(f) \le \max_{0 \le k \le 120} (120-k+g(k)) \ll 2^{70}$.
+
+This shows that $M(f) \leq 2^{70}$.
+\end{promptbox}
+
+\begin{promptbox}{Case4: review from qwen3-30b-a3b}
+  
+
+<verification>false</verification>  
+The solution incorrectly claims that the function $ f $ corresponds to vector addition in $ \mathbb{F}_2^{120} $, which is invalid because $ f $ is defined via union (not symmetric difference). It also wrongly asserts that $ f $ restricted to the core $ C_f $ is a permutation, which fails to account for possible non-injective behavior of $ f $. Additionally, the analysis of the core assumes each $ N(x) $ is a singleton, which is not guaranteed by the problem's conditions. These critical errors undermine the proof's validity."
+ 
+\end{promptbox}
+
+The case shows that model may misunderstand definitions if the explanation is unclear in some sense. Actually, the human expert misunderstands it as well at first.
+
+\begin{promptbox}{Case4: our comment}
+  The proof is true. The model misunderstands the definition of the function $f$. However, It can easily be misunderstood due to the unclear explanation.
+\end{promptbox}
+
+
+
+
 
 \end{document}
